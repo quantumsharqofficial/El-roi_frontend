@@ -15,13 +15,15 @@ import logo from "../assets/elroi - logo.png";
 // ─── Menu Definitions ────────────────────────────────────────────────────────
 const ADMIN_MENU = [
   { label: "Employees", icon: Users, tab: "Employees" },
+  { label: "Shortlisted Candidates", icon: Users, tab: "Shortlisted" },
   { label: "Attendance",  icon: CalendarCheck, tab: "Attendance Logs" },
   { label: 'Leave',       icon: CalendarDays,  tab: 'Leaves' },
+  { label: "Payroll", icon: FileText, tab: "Payroll" },
 ];
 
 const EMPLOYEE_MENU = [
-  // { label: "Dashboard", icon: Users, tab: "Dashboard" },
   { label: "Leave Requests", icon: CalendarDays, tab: "Leave Requests" },
+  { label: "Payslips", icon: FileText, tab: "Payslips" },
   { label: "Profile", icon: Users, tab: "Profile" },
 ];
 

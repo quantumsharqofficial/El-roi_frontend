@@ -20,7 +20,7 @@ import {
   X,
   Calendar,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import Sidebar from "../layouts/Sidebar";
 import Navbar from "../layouts/Navbar";
@@ -109,7 +109,9 @@ export default function EmployeeForm({ mode = "add" }) {
     salary: "",
     employeeType: "Onboarding",
     probationEndDate: "",
+    probationStartDate: "",
     noticePeriodEndDate: "",
+    noticeStartDate: "",
     status: "Active",
     emergencyContact: "",
     emergencyNumber: "",
@@ -207,9 +209,28 @@ export default function EmployeeForm({ mode = "add" }) {
       return { ...f, certifications: updated };
     });
 
+  const location = useLocation();
+
   /* ── Fetch Existing Employee for Edit/View ── */
   React.useEffect(() => {
-    if (mode === "add" || !id) return;
+    if (mode === "add") {
+      if (location.state?.candidate) {
+        const cand = location.state.candidate;
+        setForm(f => ({
+          ...f,
+          firstName: cand.name.split(" ")[0] || "",
+          lastName: cand.name.split(" ").slice(1).join(" ") || "",
+          personalPhoneNumber: cand.mobileNumber || "",
+          designation: cand.positionApplied || "",
+          dateOfJoining: cand.proposedDateOfJoining ? cand.proposedDateOfJoining.split("T")[0] : "",
+          sourceOfHire: "Shortlisted Candidate",
+        }));
+      }
+      setIsLoading(false);
+      return;
+    }
+
+    if (!id) return;
 
     AxiosInstance.get(`/employees/${id}`)
       .then((res) => {
@@ -237,8 +258,14 @@ export default function EmployeeForm({ mode = "add" }) {
             probationEndDate: data.probationEndDate
               ? data.probationEndDate.split("T")[0]
               : "",
+            probationStartDate: data.probationStartDate
+              ? data.probationStartDate.split("T")[0]
+              : "",
             noticePeriodEndDate: data.noticePeriodEndDate
               ? data.noticePeriodEndDate.split("T")[0]
+              : "",
+            noticeStartDate: data.noticeStartDate
+              ? data.noticeStartDate.split("T")[0]
               : "",
             status: data.status || "Active",
             emergencyContact: data.emergencyContact || "",
@@ -289,7 +316,7 @@ export default function EmployeeForm({ mode = "add" }) {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [id, mode]);
+  }, [id, mode, location.state]);
 
   /* ── Photo upload ── */
   const handlePhotoFile = (file) => {
@@ -439,7 +466,9 @@ export default function EmployeeForm({ mode = "add" }) {
       salary: parseFloat(form.salary) || 0,
       employeeType: form.employeeType || "Onboarding",
       probationEndDate: form.probationEndDate,
+      probationStartDate: form.probationStartDate || form.dateOfJoining,
       noticePeriodEndDate: form.noticePeriodEndDate,
+      noticeStartDate: form.noticeStartDate,
       status: form.status,
       emergencyContact: form.emergencyContact,
       emergencyNumber: form.emergencyNumber,
@@ -504,6 +533,14 @@ export default function EmployeeForm({ mode = "add" }) {
           toast.success(
             `Employee profile for ${form.firstName} ${form.lastName} saved successfully!`,
           );
+        }
+      }
+      if (mode !== "edit" && location.state?.candidate) {
+        try {
+          const cand = location.state.candidate;
+          await AxiosInstance.put(`/shortlisted/${cand._id}`, { status: "Converted" });
+        } catch (candErr) {
+          console.error("Failed to update candidate status:", candErr);
         }
       }
       setTimeout(() => navigate("/admin-dashboard"), 1200);
@@ -817,32 +854,60 @@ export default function EmployeeForm({ mode = "add" }) {
                     </Field>
                   </div>
 
-                  {form.employeeType === "Probation Period" && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                      <Field label="Probation End Date" required>
+                   {form.employeeType === "Probation Period" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <Field label="Probation Start Date" required>
                         <input
                           type="date"
                           required
+                          value={form.probationStartDate || form.dateOfJoining}
+                          onChange={(e) =>
+                            set("probationStartDate", e.target.value)
+                          }
+                          disabled={mode === "view"}
+                          className={INPUT}
+                        />
+                      </Field>
+                      <Field label="Probation End Date">
+                        <input
+                          type="date"
                           value={form.probationEndDate}
                           onChange={(e) =>
                             set("probationEndDate", e.target.value)
                           }
+                          disabled={mode === "view"}
                           className={INPUT}
                         />
                       </Field>
                     </div>
                   )}
                   {form.employeeType === "Notice Period" && (
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                      <Field label="Notice Period End Date" required>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <Field label="Notice Start Date" required>
                         <input
                           type="date"
                           required
-                          value={form.noticePeriodEndDate}
-                          onChange={(e) =>
-                            set("noticePeriodEndDate", e.target.value)
-                          }
+                          value={form.noticeStartDate}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            set("noticeStartDate", val);
+                            if (val) {
+                              const d = new Date(val);
+                              d.setDate(d.getDate() + 30);
+                              set("noticePeriodEndDate", d.toISOString().split("T")[0]);
+                            }
+                          }}
+                          disabled={mode === "view"}
                           className={INPUT}
+                        />
+                      </Field>
+                      <Field label="Notice Period End Date (Auto-calculated 30 Days)">
+                        <input
+                          type="date"
+                          readOnly
+                          value={form.noticePeriodEndDate}
+                          disabled={true}
+                          className={`${INPUT} bg-slate-100 cursor-not-allowed`}
                         />
                       </Field>
                     </div>

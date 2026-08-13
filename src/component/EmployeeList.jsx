@@ -1,6 +1,35 @@
 import React, { useState } from 'react';
 import { Search, Plus, CheckCircle2, Clock, AlertCircle, ScanFace, Eye, Edit, Trash2 } from 'lucide-react';
 
+const getWorkingDaysCount = (startDate, endDate) => {
+  let count = 0;
+  let cur = new Date(startDate);
+  const end = new Date(endDate);
+
+  const holidays = [
+    "01-01", // New Year
+    "01-26", // Republic Day
+    "05-01", // May Day
+    "08-15", // Independence Day
+    "10-02", // Gandhi Jayanti
+    "12-25", // Christmas
+  ];
+
+  while (cur <= end) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) {
+      const monthStr = String(cur.getMonth() + 1).padStart(2, "0");
+      const dateStr = String(cur.getDate()).padStart(2, "0");
+      const mmdd = `${monthStr}-${dateStr}`;
+      if (!holidays.includes(mmdd)) {
+        count++;
+      }
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+};
+
 export default function EmployeeList({ employees, navigate, setDeleteModal }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
@@ -22,7 +51,6 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
     }
     return matchesSearch;
   });
-
   return (
     <>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -107,7 +135,26 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
                     </td>
                     <td className="px-6 py-4 text-slate-650 font-medium">
                       <div className="font-semibold text-slate-900">{emp.designation}</div>
-                      {emp.employeeType && (
+                      {emp.employeeType === "Probation Period" ? (() => {
+                        const start = emp.probationStartDate || emp.rawDateOfJoining || new Date();
+                        const completed = getWorkingDaysCount(new Date(start), new Date());
+                        const remaining = Math.max(0, 45 - completed);
+                        return (
+                          <span className="inline-block mt-1 text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                            🟡 Probation – {completed} of 45 Days Completed ({remaining} Left)
+                          </span>
+                        );
+                      })() : emp.employeeType === "Notice Period" ? (() => {
+                        const start = emp.noticeStartDate || new Date();
+                        const diffTime = Math.abs(new Date() - new Date(start));
+                        const completed = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+                        const remaining = Math.max(0, 30 - completed);
+                        return (
+                          <span className="inline-block mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                            🔴 Notice Period Day {completed} / 30 ({remaining} Days Remaining)
+                          </span>
+                        );
+                      })() : emp.employeeType && (
                         <span className="inline-block mt-1 text-[10px] font-extrabold text-[#588b12] bg-[#588b12]/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
                           {emp.employeeType}
                         </span>
@@ -141,13 +188,16 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2.5">
-                        <button
-                          title="Face Recognition"
-                          onClick={() => navigate(`/face-capture/${emp._id}`)}
-                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-amber-300 text-amber-500 hover:bg-amber-50 transition-colors cursor-pointer"
-                        >
-                          <ScanFace className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                        </button>
+
+                        {(!emp.faceVector || emp.faceVector.length === 0) && (
+                          <button
+                            title="Face Recognition"
+                            onClick={() => navigate(`/face-capture/${emp._id}`)}
+                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-amber-300 text-amber-500 hover:bg-amber-50 transition-colors cursor-pointer"
+                          >
+                            <ScanFace className="w-[18px] h-[18px]" strokeWidth={2.5} />
+                          </button>
+                        )}
                         <button
                           title="View"
                           onClick={() => navigate(`/view-employee/${emp._id}`)}

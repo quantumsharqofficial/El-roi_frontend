@@ -144,6 +144,152 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('All'); // 'All' | 'Physiotherapists' | 'Admin' | 'New Joinees'
 
+  // Shortlisted Candidates state
+  const [shortlisted, setShortlisted] = useState([]);
+  const [isAddingCandidate, setIsAddingCandidate] = useState(false);
+  const [candidateForm, setCandidateForm] = useState({
+    name: '',
+    positionApplied: '',
+    mobileNumber: '',
+    interviewDate: '',
+    proposedDateOfJoining: '',
+    remarks: ''
+  });
+
+  const fetchShortlisted = async () => {
+    try {
+      const res = await AxiosInstance.get('/shortlisted');
+      setShortlisted(res.data || []);
+    } catch (err) {
+      console.error("Error fetching shortlisted candidates:", err);
+    }
+  };
+
+  const handleAddCandidate = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await AxiosInstance.post('/shortlisted', candidateForm);
+      setShortlisted([...shortlisted, res.data]);
+      toast.success("Candidate shortlisted successfully!");
+      setIsAddingCandidate(false);
+      setCandidateForm({ name: '', positionApplied: '', mobileNumber: '', interviewDate: '', proposedDateOfJoining: '', remarks: '' });
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to shortlist candidate.");
+    }
+  };
+
+  const handleRemoveCandidate = async (id) => {
+    try {
+      await AxiosInstance.delete(`/shortlisted/${id}`);
+      setShortlisted(prev => prev.filter(c => c._id !== id));
+      toast.success("Candidate removed successfully.");
+    } catch (err) {
+      toast.error("Failed to remove candidate.");
+    }
+  };
+
+  // Alerts & Notifications state
+  const [alerts, setAlerts] = useState({
+    probationAlerts: [],
+    noticeAlerts: [],
+    birthdayAlerts: [],
+    pendingLeaves: [],
+    missingAttendance: []
+  });
+
+  const fetchAlerts = async () => {
+    try {
+      const res = await AxiosInstance.get('/alerts');
+      setAlerts(res.data || {
+        probationAlerts: [],
+        noticeAlerts: [],
+        birthdayAlerts: [],
+        pendingLeaves: [],
+        missingAttendance: []
+      });
+    } catch (err) {
+      console.error("Error fetching alerts:", err);
+    }
+  };
+
+  // Payroll automation state
+  const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState('');
+  const [payrollData, setPayrollData] = useState(null);
+  const [payrollOverride, setPayrollOverride] = useState({
+    basicSalary: 0,
+    unpaidLeavesCount: 0,
+    paidLeavesCount: 0,
+    leaveDeductions: 0,
+    overtimeHours: 0,
+    incentives: 0,
+    performanceBonus: 0,
+    specialAllowances: 0,
+    travelAllowance: 0,
+    otherAdditionalPayments: 0,
+    payableSalary: 0
+  });
+
+  const fetchPayrollCalculation = async (empId, monthVal) => {
+    if (!empId || !monthVal) return;
+    try {
+      const res = await AxiosInstance.get(`/payroll/calculate?employeeId=${empId}&month=${monthVal}`);
+      const data = res.data;
+      setPayrollData(data);
+      
+      const dailyRate = data.basicSalary / (data.totalWorkingDays || 30);
+      const leaveDeductionsVal = 0; // Default leaves count as paid leaves
+      const netVal = data.basicSalary + (data.overtimeHours * (dailyRate / 8 || 150));
+
+      setPayrollOverride({
+        basicSalary: data.basicSalary || 0,
+        unpaidLeavesCount: 0,
+        paidLeavesCount: data.approvedLeaveDays || 0,
+        leaveDeductions: leaveDeductionsVal,
+        overtimeHours: data.overtimeHours || 0,
+        incentives: 0,
+        performanceBonus: 0,
+        specialAllowances: 0,
+        travelAllowance: 0,
+        otherAdditionalPayments: 0,
+        payableSalary: Math.round(netVal)
+      });
+    } catch (err) {
+      toast.error("Failed to load payroll calculations.");
+    }
+  };
+
+  const handleSavePayroll = async (statusVal = "Draft") => {
+    try {
+      const payload = {
+        employeeId: payrollData.employeeId,
+        employeeEID: payrollData.employeeEID,
+        employeeName: payrollData.employeeName,
+        month: payrollMonth,
+        status: statusVal,
+        ...payrollOverride
+      };
+      await AxiosInstance.post("/payroll", payload);
+      toast.success(`Payslip successfully saved as ${statusVal}!`);
+    } catch (err) {
+      toast.error("Failed to save payslip.");
+    }
+  };
+
+  // Fetch functions triggered by activeTab changes
+  useEffect(() => {
+    if (activeTab === 'Shortlisted') {
+      fetchShortlisted();
+    }
+    if (activeTab === 'Payroll') {
+      // Fetch calculation if employee is selected
+      if (selectedPayrollEmployee) {
+        fetchPayrollCalculation(selectedPayrollEmployee, payrollMonth);
+      }
+    }
+    fetchAlerts(); // Load alerts dynamically on any tab change
+  }, [activeTab, selectedPayrollEmployee, payrollMonth]);
+
   // Delete Modal state
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, employee: null, confirmId: '' });
   const [isDeleting, setIsDeleting] = useState(false);
@@ -231,11 +377,16 @@ export default function AdminDashboard() {
               designation: emp.designation,
               department: 'Clinical',
               dateOfJoining: dateFormatted,
+              rawDateOfJoining: emp.dateOfJoining,
               status: emp.status === 'Active' ? 'Active' : 'Deactivated',
               avatar: emp.profilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
               email: emp.email,
               phone: emp.personalPhoneNumber || emp.workPhoneNumber || '',
-              employeeType: emp.employeeType || 'Onboarding'
+              employeeType: emp.employeeType || 'Onboarding',
+              noticeStartDate: emp.noticeStartDate,
+              probationStartDate: emp.probationStartDate,
+              faceVector: emp.faceVector,
+              faceCaptureStatus: emp.faceCaptureStatus,
             };
           });
 
@@ -534,6 +685,92 @@ export default function AdminDashboard() {
                 </Link>
               </div>
 
+              {/* SYSTEM ALERTS & ACTION ITEMS */}
+              {(alerts.probationAlerts?.length > 0 || alerts.noticeAlerts?.length > 0 || alerts.birthdayAlerts?.length > 0 || alerts.pendingLeaves?.length > 0 || alerts.missingAttendance?.length > 0) && (
+                <div className="bg-amber-50/50 p-6 rounded-3xl border border-amber-200/80 shadow-sm space-y-4">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <h3 className="font-extrabold text-amber-800 text-base uppercase tracking-wider">System Action Items & Notifications</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {/* Probation Alerts */}
+                    {alerts.probationAlerts?.length > 0 && (
+                      <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-sm space-y-2">
+                        <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest block">🟡 Probation Ending Soon</span>
+                        <ul className="space-y-1 text-xs font-semibold text-slate-700">
+                          {alerts.probationAlerts.map((al, idx) => (
+                            <li key={idx} className="flex justify-between border-b border-slate-50 pb-1">
+                              <span>{al.name}</span>
+                              <span className="text-amber-600 font-bold">{al.remaining} working days left</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Notice Period Alerts */}
+                    {alerts.noticeAlerts?.length > 0 && (
+                      <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-sm space-y-2">
+                        <span className="text-[10px] font-bold text-rose-700 uppercase tracking-widest block">🔴 Notice Period Warning</span>
+                        <ul className="space-y-1 text-xs font-semibold text-slate-700">
+                          {alerts.noticeAlerts.map((al, idx) => (
+                            <li key={idx} className="flex justify-between border-b border-slate-50 pb-1">
+                              <span>{al.name}</span>
+                              <span className="text-rose-600 font-bold">{al.remaining} days left</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Birthday Reminders */}
+                    {alerts.birthdayAlerts?.length > 0 && (
+                      <div className="bg-white p-4 rounded-xl border border-violet-200 shadow-sm space-y-2">
+                        <span className="text-[10px] font-bold text-violet-700 uppercase tracking-widest block">🎂 Birthday Reminders</span>
+                        <ul className="space-y-1 text-xs font-semibold text-slate-700">
+                          {alerts.birthdayAlerts.map((al, idx) => (
+                            <li key={idx} className="flex justify-between border-b border-slate-50 pb-1">
+                              <span>{al.name}</span>
+                              <span className="text-violet-600 font-bold">{al.daysRemaining === 0 ? "Today!" : `in ${al.daysRemaining} days`}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Pending Leaves */}
+                    {alerts.pendingLeaves?.length > 0 && (
+                      <div className="bg-white p-4 rounded-xl border border-blue-200 shadow-sm space-y-2">
+                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest block">📝 Pending Leaves ({alerts.pendingLeaves.length})</span>
+                        <ul className="space-y-1 text-xs font-semibold text-slate-700">
+                          {alerts.pendingLeaves.slice(0, 3).map((al, idx) => (
+                            <li key={idx} className="flex justify-between border-b border-slate-50 pb-1">
+                              <span>{al.employeeName}</span>
+                              <span className="text-blue-500 italic">Pending Approval</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Missing Attendance today */}
+                    {alerts.missingAttendance?.length > 0 && (
+                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 col-span-1 md:col-span-2 xl:col-span-3">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">❓ Missing Attendance Today</span>
+                        <div className="max-h-24 overflow-y-auto pt-1">
+                          {alerts.missingAttendance.map((al, idx) => (
+                            <span key={idx} className="inline-block bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-lg mr-2 mb-2">
+                              {al.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 {stats.map((s, i) => (
                   <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
@@ -581,6 +818,451 @@ export default function AdminDashboard() {
           {/* Active Tab: Attendance Logs */}
           {activeTab === 'Attendance Logs' && (
             <Attendance employees={employees} />
+          )}
+
+          {/* Active Tab: Shortlisted Candidates */}
+          {activeTab === 'Shortlisted' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Shortlisted Candidates (Pre-Joining)</h2>
+                  <p className="text-xs text-slate-500 mt-1">Manage selected candidates prior to onboarding. Capacity limit: 6 active candidates.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (shortlisted.length >= 6) {
+                      toast.error("Maximum capacity of 6 active shortlisted candidates reached.");
+                      return;
+                    }
+                    setIsAddingCandidate(true);
+                  }}
+                  className="bg-[#588b12] hover:bg-[#4a750f] text-white px-4.5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer animate-fade-in"
+                >
+                  <Plus className="w-4 h-4" />
+                  Shortlist Candidate
+                </button>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                        <th className="px-6 py-4">Candidate Name</th>
+                        <th className="px-6 py-4">Position Applied</th>
+                        <th className="px-6 py-4">Mobile Number</th>
+                        <th className="px-6 py-4">Interview Date</th>
+                        <th className="px-6 py-4">Proposed Joining Date</th>
+                        <th className="px-6 py-4">Remarks</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150/80 text-sm">
+                      {shortlisted.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" className="text-center py-8 text-slate-400 font-medium">
+                            No shortlisted candidates found.
+                          </td>
+                        </tr>
+                      ) : (
+                        shortlisted.map((c) => (
+                          <tr key={c._id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-slate-800">{c.name}</td>
+                            <td className="px-6 py-4 font-semibold text-slate-700">{c.positionApplied}</td>
+                            <td className="px-6 py-4 text-slate-650 font-medium">{c.mobileNumber}</td>
+                            <td className="px-6 py-4 text-slate-500">{c.interviewDate ? new Date(c.interviewDate).toLocaleDateString('en-GB') : '—'}</td>
+                            <td className="px-6 py-4 text-slate-500">{c.proposedDateOfJoining ? new Date(c.proposedDateOfJoining).toLocaleDateString('en-GB') : '—'}</td>
+                            <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate" title={c.remarks}>{c.remarks || '—'}</td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => navigate("/add-employee", { state: { candidate: c } })}
+                                  className="px-3 py-1.5 bg-lime-600 hover:bg-lime-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+                                >
+                                  Convert to Employee
+                                </button>
+                                <button
+                                  onClick={() => handleRemoveCandidate(c._id)}
+                                  className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-xl cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Add Candidate Modal */}
+              {isAddingCandidate && (
+                <div className="fixed inset-0 bg-slate-950/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scale-up">
+                    <div className="px-6 py-4.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+                      <h3 className="font-extrabold text-slate-900 text-base">Shortlist New Candidate</h3>
+                      <button onClick={() => setIsAddingCandidate(false)} className="text-slate-400 hover:text-slate-700">
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <form onSubmit={handleAddCandidate} className="p-6 space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Full Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={candidateForm.name}
+                          onChange={(e) => setCandidateForm({ ...candidateForm, name: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
+                          placeholder="e.g. John Doe"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Position Applied *</label>
+                        <input
+                          type="text"
+                          required
+                          value={candidateForm.positionApplied}
+                          onChange={(e) => setCandidateForm({ ...candidateForm, positionApplied: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
+                          placeholder="e.g. Physiotherapist"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Mobile Number *</label>
+                        <input
+                          type="tel"
+                          required
+                          value={candidateForm.mobileNumber}
+                          onChange={(e) => setCandidateForm({ ...candidateForm, mobileNumber: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
+                          placeholder="+91 98765 43210"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-700 uppercase">Interview Date *</label>
+                          <input
+                            type="date"
+                            required
+                            value={candidateForm.interviewDate}
+                            onChange={(e) => setCandidateForm({ ...candidateForm, interviewDate: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-700 uppercase">Proposed Joining Date *</label>
+                          <input
+                            type="date"
+                            required
+                            value={candidateForm.proposedDateOfJoining}
+                            onChange={(e) => setCandidateForm({ ...candidateForm, proposedDateOfJoining: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Remarks</label>
+                        <textarea
+                          value={candidateForm.remarks}
+                          onChange={(e) => setCandidateForm({ ...candidateForm, remarks: e.target.value })}
+                          rows="3"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm"
+                          placeholder="Remarks..."
+                        />
+                      </div>
+                      <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+                        <button type="button" onClick={() => setIsAddingCandidate(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold">Cancel</button>
+                        <button type="submit" className="px-5 py-2.5 bg-[#588b12] text-white rounded-xl text-sm font-bold">Save</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Active Tab: Payroll */}
+          {activeTab === 'Payroll' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Payroll Automation & Compensation</h2>
+                <p className="text-xs text-slate-500 mt-1">Review monthly logs, calculate compensation, add incentives, allowances and process salary slips.</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-6">
+                {/* Selector Card */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 h-fit">
+                  <h3 className="font-extrabold text-slate-900 text-base">Select Month & Employee</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Select Month</label>
+                      <input
+                        type="month"
+                        value={payrollMonth}
+                        onChange={(e) => setPayrollMonth(e.target.value)}
+                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] focus:bg-white transition-all font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">Select Employee</label>
+                      <select
+                        value={selectedPayrollEmployee}
+                        onChange={(e) => setSelectedPayrollEmployee(e.target.value)}
+                        className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] focus:bg-white transition-all font-semibold"
+                      >
+                        <option value="">— Choose Employee —</option>
+                        {employees.map(emp => (
+                          <option key={emp._id} value={emp._id}>{emp.name} ({emp.id})</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Calculation & Adjustments Panel */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                  {!payrollData ? (
+                    <div className="text-center py-16 text-slate-400 font-semibold">
+                      Please select an employee and month to load payroll details.
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="border-b border-slate-100 pb-4">
+                        <h3 className="text-lg font-black text-[#588b12]">{payrollData.employeeName}</h3>
+                        <p className="text-xs text-slate-500">Employee ID: {payrollData.employeeEID} • Month: {payrollMonth}</p>
+                      </div>
+
+                      {/* Log Analytics */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Working Days</span>
+                          <span className="text-xl font-extrabold text-slate-800">{payrollData.totalWorkingDays} Days</span>
+                        </div>
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Actual Days Present</span>
+                          <span className="text-xl font-extrabold text-slate-800">{payrollData.actualWorkingDays} Days</span>
+                        </div>
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Actual Working Hours</span>
+                          <span className="text-xl font-extrabold text-slate-800">{payrollData.actualWorkingHours} hrs</span>
+                        </div>
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Approved Leaves</span>
+                          <span className="text-xl font-extrabold text-slate-800">{payrollData.approvedLeaveDays} Days</span>
+                        </div>
+                      </div>
+
+                      {/* Pay Structure & Overrides */}
+                      <div className="space-y-4">
+                        <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider border-b border-slate-100 pb-1">Earnings & Deductions (Manual Override Enabled)</h4>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {/* Basic Salary */}
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Basic Salary (&#8377;)</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.basicSalary}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const net = val - prev.leaveDeductions + (prev.overtimeHours * (val / (payrollData.totalWorkingDays || 30) / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, basicSalary: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          {/* Overtime Hours */}
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Overtime Hours</label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              value={payrollOverride.overtimeHours}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - prev.leaveDeductions + (val * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, overtimeHours: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                            />
+                          </div>
+
+                          {/* Leave Deductions */}
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Leave Deductions (&#8377;)</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.leaveDeductions}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - val + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, leaveDeductions: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-600"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Paid Leaves Count</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.paidLeavesCount}
+                              onChange={(e) => setPayrollOverride({ ...payrollOverride, paidLeavesCount: parseInt(e.target.value) || 0 })}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Unpaid Leaves Count</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.unpaidLeavesCount}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                const dailyRate = payrollOverride.basicSalary / (payrollData.totalWorkingDays || 30);
+                                const ded = Math.round(val * dailyRate);
+                                setPayrollOverride(prev => {
+                                  const net = prev.basicSalary - ded + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, unpaidLeavesCount: val, leaveDeductions: ded, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pt-2">
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Incentives</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.incentives}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + val + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, incentives: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Bonus</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.performanceBonus}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + val + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, performanceBonus: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Special Allow.</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.specialAllowances}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + val + prev.travelAllowance + prev.otherAdditionalPayments;
+                                  return { ...prev, specialAllowances: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Travel Allow.</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.travelAllowance}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + val + prev.otherAdditionalPayments;
+                                  return { ...prev, travelAllowance: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-slate-700 uppercase">Other Payments</label>
+                            <input
+                              type="number"
+                              value={payrollOverride.otherAdditionalPayments}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setPayrollOverride(prev => {
+                                  const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 30);
+                                  const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + val;
+                                  return { ...prev, otherAdditionalPayments: val, payableSalary: Math.round(net) };
+                                });
+                              }}
+                              className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Net Payable Salary */}
+                        <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Net Payable Salary (Manual Override Allowed)</span>
+                            <input
+                              type="number"
+                              value={payrollOverride.payableSalary}
+                              onChange={(e) => setPayrollOverride({ ...payrollOverride, payableSalary: Math.round(parseFloat(e.target.value) || 0) })}
+                              className="text-2xl font-black text-[#588b12] bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 mt-1 focus:outline-none focus:bg-white"
+                            />
+                          </div>
+
+                          <div className="flex gap-3">
+                            <button
+                              type="button"
+                              onClick={() => handleSavePayroll("Draft")}
+                              className="px-5 py-3 rounded-xl border border-slate-200 font-bold hover:bg-slate-100 text-slate-700 text-sm transition-all"
+                            >
+                              Save Draft
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSavePayroll("Paid")}
+                              className="px-5 py-3 rounded-xl bg-[#588b12] hover:bg-[#4a750f] text-white font-bold text-sm shadow-md transition-all animate-pulse"
+                            >
+                              Generate & Pay
+                            </button>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Active Tab: Leaves */}

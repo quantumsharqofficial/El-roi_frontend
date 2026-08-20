@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, CheckCircle2, Clock, AlertCircle, ScanFace, Eye, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, CheckCircle2, Clock, AlertCircle, ScanFace, Eye, Edit, Trash2, Calendar } from 'lucide-react';
 
 const getWorkingDaysCount = (startDate, endDate) => {
   let count = 0;
@@ -198,6 +198,13 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
                             <ScanFace className="w-[18px] h-[18px]" strokeWidth={2.5} />
                           </button>
                         )}
+                        <button
+                          title="Daily Tracking"
+                          onClick={() => navigate(`/employee-tracking/${emp._id}/${emp.id}`)}
+                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-[#588b12]/40 text-[#588b12] hover:bg-[#588b12]/10 transition-colors cursor-pointer"
+                        >
+                          <Calendar className="w-[18px] h-[18px]" strokeWidth={2.5} />
+                        </button>
                         <button
                           title="View"
                           onClick={() => navigate(`/view-employee/${emp._id}`)}

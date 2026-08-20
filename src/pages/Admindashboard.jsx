@@ -20,7 +20,8 @@ import {
   X,
   ScanFace,
   Trash2,
-  Edit
+  Edit,
+  Cake
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -39,11 +40,52 @@ const calculateAge = (dobString) => {
   return calculatedAge >= 0 ? `${calculatedAge} years` : '';
 };
 
+const getUpcomingBirthdays = (employeeList) => {
+  if (!employeeList || employeeList.length === 0) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return employeeList
+    .filter(emp => emp.dob)
+    .map(emp => {
+      const dobDate = new Date(emp.dob);
+      const nextBirthday = new Date(today.getFullYear(), dobDate.getMonth(), dobDate.getDate());
+      if (nextBirthday < today && !(today.getMonth() === dobDate.getMonth() && today.getDate() === dobDate.getDate())) {
+        nextBirthday.setFullYear(today.getFullYear() + 1);
+      }
+      const diffTime = nextBirthday - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const isToday = today.getMonth() === dobDate.getMonth() && today.getDate() === dobDate.getDate();
+      return {
+        ...emp,
+        daysUntil: isToday ? 0 : diffDays,
+        formattedDob: dobDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+        age: today.getFullYear() - dobDate.getFullYear()
+      };
+    })
+    .sort((a, b) => a.daysUntil - b.daysUntil);
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('adminActiveTab') || 'Employees';
+  });
+  const [dashboardSubTab, setDashboardSubTab] = useState('Birthdays');
+  const [todayAttendance, setTodayAttendance] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+
+  // Employee Directory state
+  const [employees, setEmployees] = useState([]);
+
+  // Alerts & Notifications state
+  const [alerts, setAlerts] = useState({
+    probationAlerts: [],
+    noticeAlerts: [],
+    birthdayAlerts: [],
+    pendingLeaves: [],
+    missingAttendance: []
   });
 
   useEffect(() => {
@@ -51,15 +93,45 @@ export default function AdminDashboard() {
   }, [activeTab]);
 
 
+  // Compute dynamic stats
+  const totalEmployeesCount = employees ? employees.length : 0;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayPresentCount = todayAttendance && Array.isArray(todayAttendance)
+    ? todayAttendance.filter(log => log && (log.status === 'Present' || log.status === 'Late')).length
+    : 0;
+  const todayLeaveCount = leaves && Array.isArray(leaves)
+    ? leaves.filter(l => {
+      if (!l || !l.startDate || !l.endDate) return false;
+      try {
+        const start = new Date(l.startDate).toISOString().split('T')[0];
+        const end = new Date(l.endDate).toISOString().split('T')[0];
+        return todayStr >= start && todayStr <= end;
+      } catch (e) {
+        return false;
+      }
+    }).length
+    : 0;
+
+  const thisMonthBirthdays = getUpcomingBirthdays(employees).filter(emp => {
+    if (!emp || !emp.dob) return false;
+    try {
+      return new Date(emp.dob).getMonth() === new Date().getMonth();
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const pendingLeaves = leaves && Array.isArray(leaves)
+    ? leaves.filter(l => l && l.status === 'Pending HR')
+    : [];
+
   // Admin Page stats
   const stats = [
-    { label: 'Page Views', val: '1,493', change: '+12.4%', theme: 'text-lime-600 bg-lime-50 border-lime-200' },
-    { label: 'Enquiries Sent', val: '28', change: '+3.1%', theme: 'text-violet-650 bg-violet-50 border-violet-200' },
-    { label: 'Open Job Applications', val: '5', change: 'New', theme: 'text-cyan-650 bg-cyan-50 border-cyan-200' }
+    { label: 'Total Employees', val: totalEmployeesCount, change: 'Active Profiles', theme: 'text-lime-600 bg-lime-50 border-lime-200' },
+    { label: 'Today Present', val: todayPresentCount, change: 'Checked In', theme: 'text-emerald-650 bg-emerald-50 border-emerald-200' },
+    { label: 'Today Leave', val: todayLeaveCount, change: 'On Leave Today', theme: 'text-rose-650 bg-rose-50 border-rose-200' }
   ];
-
-  // Employee Directory state
-  const [employees, setEmployees] = useState([]);
 
   // Attendance Log state
   const [attendanceLogs, setAttendanceLogs] = useState([]);
@@ -77,7 +149,6 @@ export default function AdminDashboard() {
   });
 
   // Leaves management state
-  const [leaves, setLeaves] = useState([]);
   const [isApplyingLeave, setIsApplyingLeave] = useState(false);
   const [adminLeaveFormData, setAdminLeaveFormData] = useState({
     employeeId: '',
@@ -96,9 +167,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchTodayAttendance = async () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await AxiosInstance.get(`/attendance/find-date/${todayStr}`);
+      setTodayAttendance(res.data || []);
+    } catch (err) {
+      console.error("Error fetching today's attendance:", err);
+    }
+  };
+
   useEffect(() => {
-    if (activeTab === 'Leaves') {
+    if (activeTab === 'Leaves' || activeTab === 'Dashboard') {
       fetchAllLeaves();
+    }
+    if (activeTab === 'Dashboard') {
+      fetchTodayAttendance();
     }
   }, [activeTab]);
 
@@ -188,14 +272,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // Alerts & Notifications state
-  const [alerts, setAlerts] = useState({
-    probationAlerts: [],
-    noticeAlerts: [],
-    birthdayAlerts: [],
-    pendingLeaves: [],
-    missingAttendance: []
-  });
+
 
   const fetchAlerts = async () => {
     try {
@@ -236,7 +313,7 @@ export default function AdminDashboard() {
       const res = await AxiosInstance.get(`/payroll/calculate?employeeId=${empId}&month=${monthVal}`);
       const data = res.data;
       setPayrollData(data);
-      
+
       const dailyRate = data.basicSalary / (data.totalWorkingDays || 30);
       const leaveDeductionsVal = 0; // Default leaves count as paid leaves
       const netVal = data.basicSalary + (data.overtimeHours * (dailyRate / 8 || 150));
@@ -387,6 +464,7 @@ export default function AdminDashboard() {
               probationStartDate: emp.probationStartDate,
               faceVector: emp.faceVector,
               faceCaptureStatus: emp.faceCaptureStatus,
+              dob: emp.dob,
             };
           });
 
@@ -500,7 +578,7 @@ export default function AdminDashboard() {
 
       toast.success('Attendance recorded successfully!');
       setIsMarkingAttendance(false);
-      
+
       // Refresh logs for current active attendanceDate
       if (activeTab === 'Attendance Logs') {
         const res = await AxiosInstance.get(`/attendance/find-date/${attendanceDate}`);
@@ -668,13 +746,14 @@ export default function AdminDashboard() {
 
         <main className="flex-1 p-6 md:p-8 space-y-6 overflow-y-auto">
 
-          {/* Active Tab: Dashboard (Standard Performance stats) */}
+          {/* Active Tab: Dashboard */}
           {activeTab === 'Dashboard' && (
             <>
+              {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Configuration Dashboard</h2>
-                  <p className="text-xs text-slate-500 mt-1">Core platform performance figures and submission metrics</p>
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h2>
+                  <p className="text-xs text-slate-500 mt-1">Welcome back! Here's your daily overview.</p>
                 </div>
                 <Link
                   to="/Webadmin"
@@ -685,16 +764,57 @@ export default function AdminDashboard() {
                 </Link>
               </div>
 
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                {/* Total Employees */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-lime-100/40 rounded-full -translate-y-6 translate-x-6" />
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-10 h-10 rounded-xl bg-lime-100 flex items-center justify-center">
+                      <User className="w-5 h-5 text-lime-700" />
+                    </span>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">All Employees</span>
+                  </div>
+                  <p className="text-3xl font-extrabold text-slate-900">{totalEmployeesCount}</p>
+                  <p className="text-xs text-lime-600 font-semibold mt-1">Active Profiles</p>
+                </div>
+
+                {/* Today Present */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-100/40 rounded-full -translate-y-6 translate-x-6" />
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-700" />
+                    </span>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Today Present</span>
+                  </div>
+                  <p className="text-3xl font-extrabold text-slate-900">{todayPresentCount}</p>
+                  <p className="text-xs text-emerald-600 font-semibold mt-1">Checked In Today</p>
+                </div>
+
+                {/* Today Leave */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-rose-100/40 rounded-full -translate-y-6 translate-x-6" />
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center">
+                      <Calendar className="w-5 h-5 text-rose-700" />
+                    </span>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Today Leave</span>
+                  </div>
+                  <p className="text-3xl font-extrabold text-slate-900">{todayLeaveCount}</p>
+                  <p className="text-xs text-rose-600 font-semibold mt-1">On Leave Today</p>
+                </div>
+              </div>
+
               {/* SYSTEM ALERTS & ACTION ITEMS */}
-              {(alerts.probationAlerts?.length > 0 || alerts.noticeAlerts?.length > 0 || alerts.birthdayAlerts?.length > 0 || alerts.pendingLeaves?.length > 0 || alerts.missingAttendance?.length > 0) && (
+              {(alerts.probationAlerts?.length > 0 || alerts.noticeAlerts?.length > 0 || alerts.missingAttendance?.length > 0) && (
                 <div className="bg-amber-50/50 p-6 rounded-3xl border border-amber-200/80 shadow-sm space-y-4">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                    <h3 className="font-extrabold text-amber-800 text-base uppercase tracking-wider">System Action Items & Notifications</h3>
+                    <h3 className="font-extrabold text-amber-800 text-base uppercase tracking-wider">System Alerts</h3>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {/* Probation Alerts */}
                     {alerts.probationAlerts?.length > 0 && (
                       <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-sm space-y-2">
                         <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest block">🟡 Probation Ending Soon</span>
@@ -709,7 +829,6 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
-                    {/* Notice Period Alerts */}
                     {alerts.noticeAlerts?.length > 0 && (
                       <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-sm space-y-2">
                         <span className="text-[10px] font-bold text-rose-700 uppercase tracking-widest block">🔴 Notice Period Warning</span>
@@ -724,39 +843,8 @@ export default function AdminDashboard() {
                       </div>
                     )}
 
-                    {/* Birthday Reminders */}
-                    {alerts.birthdayAlerts?.length > 0 && (
-                      <div className="bg-white p-4 rounded-xl border border-violet-200 shadow-sm space-y-2">
-                        <span className="text-[10px] font-bold text-violet-700 uppercase tracking-widest block">🎂 Birthday Reminders</span>
-                        <ul className="space-y-1 text-xs font-semibold text-slate-700">
-                          {alerts.birthdayAlerts.map((al, idx) => (
-                            <li key={idx} className="flex justify-between border-b border-slate-50 pb-1">
-                              <span>{al.name}</span>
-                              <span className="text-violet-600 font-bold">{al.daysRemaining === 0 ? "Today!" : `in ${al.daysRemaining} days`}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Pending Leaves */}
-                    {alerts.pendingLeaves?.length > 0 && (
-                      <div className="bg-white p-4 rounded-xl border border-blue-200 shadow-sm space-y-2">
-                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest block">📝 Pending Leaves ({alerts.pendingLeaves.length})</span>
-                        <ul className="space-y-1 text-xs font-semibold text-slate-700">
-                          {alerts.pendingLeaves.slice(0, 3).map((al, idx) => (
-                            <li key={idx} className="flex justify-between border-b border-slate-50 pb-1">
-                              <span>{al.employeeName}</span>
-                              <span className="text-blue-500 italic">Pending Approval</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Missing Attendance today */}
                     {alerts.missingAttendance?.length > 0 && (
-                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 col-span-1 md:col-span-2 xl:col-span-3">
+                      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">❓ Missing Attendance Today</span>
                         <div className="max-h-24 overflow-y-auto pt-1">
                           {alerts.missingAttendance.map((al, idx) => (
@@ -771,37 +859,112 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                {stats.map((s, i) => (
-                  <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-                    <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      <span>{s.label}</span>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${s.theme}`}>{s.change}</span>
-                    </div>
-                    <p className="text-3xl font-extrabold text-slate-900">{s.val}</p>
-                  </div>
-                ))}
-              </div>
+              {/* Two-column layout: Birthdays + Pending Leaves */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-              <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2.5">
-                  <BarChart2 className="w-5 h-5 text-[#588b12]" />
-                  System Log Status
-                </h3>
-                <div className="border border-slate-200 bg-slate-50/50 p-5 rounded-xl font-mono text-xs text-slate-650 space-y-3 shadow-inner">
-                  <div className="flex items-start gap-2">
-                    <span className="text-[#588b12] font-semibold shrink-0">[DATABASE]</span>
-                    <span>LOG [09:12:35] - Database connected successfully. Running Mongoose schemas.</span>
+                {/* This Month Birthdays */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col">
+                  <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Cake className="w-5 h-5 text-violet-600" />
+                      <h3 className="font-bold text-slate-900 text-base">This Month Birthdays</h3>
+                    </div>
+                    <span className="text-xs text-violet-600 font-bold bg-violet-50 px-3 py-1 rounded-full border border-violet-200">
+                      {thisMonthBirthdays.length}
+                    </span>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-violet-650 font-semibold shrink-0">[ Vite HMR ]</span>
-                    <span>LOG [09:15:10] - Host connected via Vite endpoint port 5173.</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-slate-500 font-semibold shrink-0">[   Diag   ]</span>
-                    <span>LOG [09:20:00] - Diagnostics check complete. System: HEAP HEALTHY.</span>
+
+                  <div className="flex-1 overflow-y-auto max-h-[380px]">
+                    {thisMonthBirthdays.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                        <Cake className="w-10 h-10 mb-3 opacity-30" />
+                        <p className="text-sm font-medium">No birthdays this month</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {thisMonthBirthdays.map((emp) => (
+                          <div key={emp._id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+                            <img src={emp.avatar} alt={emp.name} className="w-10 h-10 rounded-full object-cover border-2 border-violet-100 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-bold text-slate-800 text-sm truncate">{emp.name}</p>
+                              <p className="text-xs text-slate-500 font-medium">{emp.designation} • {emp.formattedDob}</p>
+                            </div>
+                            {emp.daysUntil === 0 ? (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-violet-100 text-violet-700 border border-violet-200 shrink-0">
+                                🎉 Today!
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                                in {emp.daysUntil}d
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* Pending Leave Requests */}
+                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col">
+                  <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-amber-600" />
+                      <h3 className="font-bold text-slate-900 text-base">Pending Leave Requests</h3>
+                    </div>
+                    <span className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+                      {pendingLeaves.length}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto max-h-[380px]">
+                    {pendingLeaves.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                        <CheckCircle2 className="w-10 h-10 mb-3 opacity-30" />
+                        <p className="text-sm font-medium">All caught up! No pending requests.</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {pendingLeaves.map((l) => {
+                          const startStr = new Date(l.startDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+                          const endStr = new Date(l.endDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+                          const dateStr = l.startDate === l.endDate ? startStr : `${startStr} – ${endStr}`;
+                          return (
+                            <div key={l._id} className="px-5 py-3.5 hover:bg-slate-50/60 transition-colors">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="min-w-0">
+                                  <p className="font-bold text-slate-800 text-sm truncate">{l.employeeName}</p>
+                                  <p className="text-xs text-slate-500 font-medium">{l.type} • {dateStr}</p>
+                                </div>
+                                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                  Pending
+                                </span>
+                              </div>
+                              {l.reason && (
+                                <p className="text-xs text-slate-500 italic mb-2 truncate" title={l.reason}>"{l.reason}"</p>
+                              )}
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleUpdateLeaveStatus(l._id, "Approved")}
+                                  className="px-3 py-1.5 bg-lime-600 hover:bg-lime-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateLeaveStatus(l._id, "Rejected")}
+                                  className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
               </div>
             </>
           )}
@@ -1058,7 +1221,7 @@ export default function AdminDashboard() {
                       {/* Pay Structure & Overrides */}
                       <div className="space-y-4">
                         <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider border-b border-slate-100 pb-1">Earnings & Deductions (Manual Override Enabled)</h4>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           {/* Basic Salary */}
                           <div>
@@ -1327,11 +1490,10 @@ export default function AdminDashboard() {
                                 {l.reason || "—"}
                               </td>
                               <td className="px-6 py-4">
-                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                  l.status === 'Approved' ? 'bg-lime-50 text-lime-700 border-lime-200' :
-                                  l.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                  'bg-amber-50 text-amber-700 border-amber-200'
-                                }`}>
+                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-bold border ${l.status === 'Approved' ? 'bg-lime-50 text-lime-700 border-lime-200' :
+                                    l.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                      'bg-amber-50 text-amber-700 border-amber-200'
+                                  }`}>
                                   {l.status}
                                 </span>
                               </td>

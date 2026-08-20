@@ -147,11 +147,10 @@ const Navbar = ({ title = "Dashboard", onMobileMenuOpen }) => {
 
             )}
           {/* Notification bell */}
-          <button className="relative p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+          {/* <button className="relative p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
             <Bell className="w-4.5 h-4.5" />
-            {/* badge */}
             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#588b12]" />
-          </button>
+          </button> */}
 
           {/* Profile dropdown */}
           <div className="relative" ref={dropdownRef}>

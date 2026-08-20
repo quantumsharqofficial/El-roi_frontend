@@ -7,6 +7,7 @@ import {
   X,
   LogOut,
   ChevronRight,
+  LayoutDashboard,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import logo from "../assets/elroi - logo.png";
 
 // ─── Menu Definitions ────────────────────────────────────────────────────────
 const ADMIN_MENU = [
+  { label: "Dashboard", icon: LayoutDashboard, tab: "Dashboard" },
   { label: "Employees", icon: Users, tab: "Employees" },
   { label: "Shortlisted Candidates", icon: Users, tab: "Shortlisted" },
   { label: "Attendance",  icon: CalendarCheck, tab: "Attendance Logs" },

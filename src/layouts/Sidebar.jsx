@@ -24,6 +24,8 @@ const ADMIN_MENU = [
 ];
 
 const EMPLOYEE_MENU = [
+  { label: "Dashboard", icon: LayoutDashboard, tab: "Dashboard" },
+  { label: "Attendance", icon: CalendarCheck, tab: "Attendance" },
   { label: "Leave Requests", icon: CalendarDays, tab: "Leave Requests" },
   { label: "Payslips", icon: FileText, tab: "Payslips" },
   { label: "Profile", icon: Users, tab: "Profile" },

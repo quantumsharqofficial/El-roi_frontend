@@ -6,6 +6,7 @@ import EmployeeDashboard from "./pages/EmployeeDashboard.jsx";
 import AdminDashboard from "./pages/Admindashboard.jsx";
 import FaceCapture from "./pages/FaceCapture.jsx";
 import EmployeeTracking from "./pages/EmployeeTracking.jsx";
+import EmployeeLeaves from "./pages/EmployeeLeaves.jsx";
 import AddEmployee from "./component/AddEmployee.jsx";
 import EditViewEmployee from "./component/EditViewEmployee.jsx";
 
@@ -35,6 +36,8 @@ function App() {
             <Route path="/view-employee/:id" element={<EditViewEmployee />} />
             <Route path="/face-capture/:id" element={<FaceCapture />} />
             <Route path="/employee-tracking/:id/:employeeId" element={<EmployeeTracking />} />
+            <Route path="/employee-leaves/:id/:employeeId" element={<EmployeeLeaves />} />
+            <Route path="/employee-leaves/:id" element={<EmployeeLeaves />} />
           </Routes>
         </div>
       </div>

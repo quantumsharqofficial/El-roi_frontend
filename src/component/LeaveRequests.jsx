@@ -8,6 +8,17 @@ export default function LeaveRequests({
   onCancelClick,
   onViewDetailsClick,
 }) {
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 10;
+
+  const totalEntries = leaves.length;
+  const totalPages = Math.ceil(totalEntries / itemsPerPage) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+
+  const indexOfLastItem = activePage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentLeaves = leaves.slice(indexOfFirstItem, indexOfLastItem);
+
   const getStatusColor = (status) => {
     if (status === "Approved") return "bg-lime-50 text-lime-700 border-lime-200";
     if (status === "Rejected") return "bg-rose-50 text-rose-700 border-rose-200";
@@ -39,25 +50,37 @@ export default function LeaveRequests({
     return `${diffDays} ${diffDays === 1 ? "Day" : "Days"}`;
   };
 
+  const isTypeMatch = (t1, t2) => {
+    const n1 = (t1 || "").toLowerCase().trim();
+    const n2 = (t2 || "").toLowerCase().trim();
+    if (n1 === n2) return true;
+    if (n1.includes("annual") && n2.includes("annual")) return true;
+    if ((n1.includes("sick") || n1.includes("medical")) && (n2.includes("sick") || n2.includes("medical"))) return true;
+    if (n1.includes("casual") && n2.includes("casual")) return true;
+    return false;
+  };
+
   const getUsedDays = (type) => {
     const approvedAppliedDays = leaves
-      .filter((l) => l.type === type && l.status === "Approved")
+      .filter((l) => isTypeMatch(l.type, type) && l.status === "Approved")
       .reduce((acc, l) => {
         const start = new Date(l.startDate);
         const end = l.endDate ? new Date(l.endDate) : start;
-        const diff = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1;
-        return acc + diff;
+        const d1 = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+        const d2 = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+        const diff = Math.round(Math.abs(d2 - d1) / (1000 * 60 * 60 * 24)) + 1;
+        return acc + Math.max(1, diff);
       }, 0);
 
-    const bal = employeeDetails?.leaveBalances?.find((b) => b.leaveType === type);
-    const initialTaken = bal ? (bal.takenLeaves ?? 0) : 0;
+    const bal = employeeDetails?.leaveBalances?.find((b) => isTypeMatch(b.leaveType, type));
+    const initialTaken = bal ? (Number(bal.takenLeaves) || 0) : 0;
 
-    return approvedAppliedDays + initialTaken;
+    return Math.max(approvedAppliedDays, initialTaken);
   };
 
   const getLeaveBalance = (type) => {
-    const bal = employeeDetails?.leaveBalances?.find((b) => b.leaveType === type);
-    return bal ? bal.allowedDays : 10;
+    const bal = employeeDetails?.leaveBalances?.find((b) => isTypeMatch(b.leaveType, type));
+    return bal && bal.allowedDays > 0 ? bal.allowedDays : 12;
   };
 
   const annualAllowed = getLeaveBalance("Paid Annual Leave");
@@ -248,7 +271,7 @@ export default function LeaveRequests({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-150/80 text-sm">
-              {leaves.map((l, i) => (
+              {currentLeaves.map((l, i) => (
                 <tr
                   key={l._id || i}
                   className="hover:bg-slate-55/30 transition-colors"
@@ -302,8 +325,37 @@ export default function LeaveRequests({
 
         <div className="bg-slate-50/60 px-6 py-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
           <span>
-            Showing 1 to {leaves.length} of {leaves.length} entries
+            Showing {totalEntries === 0 ? 0 : indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalEntries)} of {totalEntries} entries
           </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={activePage === 1}
+              className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+            >
+              &lt;
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+              <button
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                className={`px-3 py-1 rounded font-bold cursor-pointer transition-all ${
+                  activePage === pageNum
+                    ? 'bg-[#588b12] text-white'
+                    : 'border border-slate-200/60 bg-white text-slate-650 hover:bg-slate-100'
+                }`}
+              >
+                {pageNum}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={activePage === totalPages}
+              className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+            >
+              &gt;
+            </button>
+          </div>
         </div>
       </div>
     </div>

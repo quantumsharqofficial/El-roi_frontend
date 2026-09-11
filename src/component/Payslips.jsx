@@ -1,7 +1,18 @@
-import React from "react";
-import { FileText, Eye } from "lucide-react";
+import React, { useState } from "react";
+import { FileText, Eye, Download } from "lucide-react";
 
 export default function Payslips({ payslips, onViewPayslipClick }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const totalEntries = payslips.length;
+  const totalPages = Math.ceil(totalEntries / itemsPerPage) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+
+  const indexOfLastItem = activePage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentPayslips = payslips.slice(indexOfFirstItem, indexOfLastItem);
+
   return (
     <div className="space-y-6">
       {/* Header block */}
@@ -48,7 +59,7 @@ export default function Payslips({ payslips, onViewPayslipClick }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150/80 text-sm">
-                  {payslips.map((p, i) => (
+                  {currentPayslips.map((p, i) => (
                     <tr
                       key={p._id || i}
                       className="hover:bg-slate-55/30 transition-colors"
@@ -74,13 +85,16 @@ export default function Payslips({ payslips, onViewPayslipClick }) {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => onViewPayslipClick(p)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-650 rounded-xl cursor-pointer transition-all"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          View Payslip
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => onViewPayslipClick(p)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#588b12] hover:bg-[#48730e] text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-sm"
+                            title="View & Download PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            PDF / View
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -90,8 +104,37 @@ export default function Payslips({ payslips, onViewPayslipClick }) {
 
             <div className="bg-slate-50/60 px-6 py-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
               <span>
-                Showing 1 to {payslips.length} of {payslips.length} entries
+                Showing {totalEntries === 0 ? 0 : indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalEntries)} of {totalEntries} entries
               </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={activePage === 1}
+                  className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+                >
+                  &lt;
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-1 rounded font-bold cursor-pointer transition-all ${
+                      activePage === pageNum
+                        ? 'bg-[#588b12] text-white'
+                        : 'border border-slate-200/60 bg-white text-slate-650 hover:bg-slate-100'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={activePage === totalPages}
+                  className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+                >
+                  &gt;
+                </button>
+              </div>
             </div>
           </>
         )}

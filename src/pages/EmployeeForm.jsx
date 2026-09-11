@@ -19,6 +19,8 @@ import {
   AlertCircle,
   X,
   Calendar,
+  ScanFace,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { toast } from "sonner";
@@ -88,10 +90,16 @@ export default function EmployeeForm({ mode = "add" }) {
   const [photoFile, setPhotoFile] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isLoading, setIsLoading] = useState(mode !== "add");
+  const [showDeleteFaceModal, setShowDeleteFaceModal] = useState(false);
+  const [isDeletingVector, setIsDeletingVector] = useState(false);
   const fileInputRef = useRef(null);
 
   /* ── Form State ── */
   const [form, setForm] = useState({
+    _id: "",
+    faceVector: [],
+    faceVectorUpdatedAt: null,
+    faceCaptureStatus: "not_started",
     firstName: "",
     lastName: "",
     email: "",
@@ -136,9 +144,9 @@ export default function EmployeeForm({ mode = "add" }) {
       upiId: "",
     },
     leaveBalances: [
-      { leaveType: "Paid Annual Leave", allowedDays: 0, takenLeaves: 0 },
-      { leaveType: "Sick Leave", allowedDays: 0, takenLeaves: 0 },
-      { leaveType: "Casual Leave", allowedDays: 0, takenLeaves: 0 }
+      { leaveType: "Paid Annual Leave", allowedDays: 12, takenLeaves: 0 },
+      { leaveType: "Sick Leave", allowedDays: 12, takenLeaves: 0 },
+      { leaveType: "Casual Leave", allowedDays: 12, takenLeaves: 0 }
     ],
   });
 
@@ -209,7 +217,34 @@ export default function EmployeeForm({ mode = "add" }) {
       return { ...f, certifications: updated };
     });
 
-  const location = useLocation();
+  const handleDeleteFaceVector = async () => {
+    const targetId = id || form._id || form.employeeId;
+    if (!targetId) {
+      toast.error("Employee ID not found");
+      return;
+    }
+    setIsDeletingVector(true);
+    try {
+      const res = await AxiosInstance.delete(`/employees/${targetId}/face-vector`);
+      toast.success(res.data?.message || "Face vector deleted successfully!");
+      setForm((prev) => ({
+        ...prev,
+        faceVector: [],
+        faceVectorUpdatedAt: null,
+        faceCaptureStatus: "not_started",
+      }));
+      setShowDeleteFaceModal(false);
+    } catch (err) {
+      console.error("Failed to delete face vector:", err);
+      toast.error(
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        "Failed to delete face vector. Please try again."
+      );
+    } finally {
+      setIsDeletingVector(false);
+    }
+  };
 
   /* ── Fetch Existing Employee for Edit/View ── */
   React.useEffect(() => {
@@ -237,6 +272,10 @@ export default function EmployeeForm({ mode = "add" }) {
         const data = res.data;
         if (data) {
           setForm({
+            _id: data._id || "",
+            faceVector: Array.isArray(data.faceVector) ? data.faceVector : [],
+            faceVectorUpdatedAt: data.faceVectorUpdatedAt || null,
+            faceCaptureStatus: data.faceCaptureStatus || "not_started",
             firstName: data.firstName || "",
             lastName: data.lastName || "",
             email: data.email || "",
@@ -298,11 +337,15 @@ export default function EmployeeForm({ mode = "add" }) {
               ifscCode: "",
               upiId: "",
             },
-            leaveBalances: data.leaveBalances?.length ? data.leaveBalances : [
-              { leaveType: "Paid Annual Leave", allowedDays: 12, takenLeaves: 0 },
-              { leaveType: "Sick Leave", allowedDays: 10, takenLeaves: 0 },
-              { leaveType: "Casual Leave", allowedDays: 8, takenLeaves: 0 }
-            ],
+            leaveBalances: ["Paid Annual Leave", "Sick Leave", "Casual Leave"].map(type => {
+              const prefix = type.toLowerCase().split(' ')[0];
+              const found = (data.leaveBalances || []).find(b => b.leaveType?.toLowerCase().includes(prefix));
+              return {
+                leaveType: type,
+                allowedDays: found && found.allowedDays > 0 ? found.allowedDays : 12,
+                takenLeaves: found?.takenLeaves ?? 0,
+              };
+            }),
           });
           if (data.profilePhoto) {
             setPhotoPreview(data.profilePhoto);
@@ -633,6 +676,130 @@ export default function EmployeeForm({ mode = "add" }) {
             </button>
           </div>
 
+          {/* ── Face Recognition & Vector Management ── */}
+          {mode !== "add" && (() => {
+            const hasFaceVector = Array.isArray(form.faceVector)
+              ? form.faceVector.length > 0
+              : Boolean(form.faceVector);
+            const vectorLength = Array.isArray(form.faceVector) ? form.faceVector.length : 0;
+
+            return (
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center border shrink-0 ${hasFaceVector
+                          ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                          : "bg-amber-50 text-amber-600 border-amber-200"
+                        }`}
+                    >
+                      <ScanFace className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900">
+                          Face Recognition Data
+                        </h3>
+                        {hasFaceVector ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100/80 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Vector Ready {vectorLength ? `(${vectorLength} dimensions)` : ""}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-amber-100/80 text-amber-700 border border-amber-200">
+                            <AlertCircle className="w-3.5 h-3.5" /> No Face Vector
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {hasFaceVector
+                          ? form.faceVectorUpdatedAt
+                            ? `Face vector registered on ${new Date(form.faceVectorUpdatedAt).toLocaleString()}`
+                            : "Active face vector stored in database."
+                          : "No face vector registered for this employee. Register face images for automated attendance recognition."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {hasFaceVector ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteFaceModal(true)}
+                        className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-600 text-sm font-extrabold transition-all shadow-sm cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Face Vector
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/face-capture/${id || form._id || form.employeeId}`)}
+                        className="inline-flex items-center gap-2 px-4.5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+                      >
+                        <ScanFace className="w-4 h-4" />
+                        Add Face Vector
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Delete Face Vector Confirmation Modal */}
+          {showDeleteFaceModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-5">
+                <div className="flex items-center gap-3.5 text-rose-600">
+                  <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-900">Delete Face Vector?</h3>
+                    <p className="text-xs text-slate-500">Confirmation required</p>
+                  </div>
+                </div>
+
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  Are you sure you want to delete the face vector for{" "}
+                  <span className="font-bold text-slate-900">
+                    {form.firstName} {form.lastName}
+                  </span>
+                  ? This will permanently remove the employee's face recognition data from the database.
+                </p>
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingVector}
+                    onClick={() => setShowDeleteFaceModal(false)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-sm font-bold transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingVector}
+                    onClick={handleDeleteFaceVector}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold transition-all shadow-md shadow-rose-600/20 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isDeletingVector ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        Delete Face Vector
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Form ── */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <fieldset disabled={mode === "view"} className="space-y-6">
@@ -854,7 +1021,7 @@ export default function EmployeeForm({ mode = "add" }) {
                     </Field>
                   </div>
 
-                   {form.employeeType === "Probation Period" && (
+                  {form.employeeType === "Probation Period" && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <Field label="Probation Start Date" required>
                         <input
@@ -1426,41 +1593,74 @@ export default function EmployeeForm({ mode = "add" }) {
               <Section icon={Calendar} title="Leave Balances Configuration">
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {form.leaveBalances?.map((bal, idx) => (
-                      <div key={idx} className="bg-slate-50/50 p-4 rounded-xl border border-slate-200 flex flex-col gap-3">
-                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">{bal.leaveType}</div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <Field label="Allowed Days">
-                            <input
-                              type="number"
-                              min="0"
-                              value={bal.allowedDays}
-                              onChange={(e) => {
-                                const updated = [...form.leaveBalances];
-                                updated[idx] = { ...updated[idx], allowedDays: parseInt(e.target.value) || 0 };
-                                set("leaveBalances", updated);
-                              }}
-                              className={INPUT}
-                              placeholder="e.g. 12"
-                            />
-                          </Field>
-                          <Field label="Taken Leaves">
-                            <input
-                              type="number"
-                              min="0"
-                              value={bal.takenLeaves ?? 0}
-                              onChange={(e) => {
-                                const updated = [...form.leaveBalances];
-                                updated[idx] = { ...updated[idx], takenLeaves: parseInt(e.target.value) || 0 };
-                                set("leaveBalances", updated);
-                              }}
-                              className={INPUT}
-                              placeholder="e.g. 0"
-                            />
-                          </Field>
+                    {form.leaveBalances?.map((bal, idx) => {
+                      const allowed = Number(bal.allowedDays) || 12;
+                      const taken = Number(bal.takenLeaves) || 0;
+                      const remaining = Math.max(0, allowed - taken);
+                      const pctUsed = allowed > 0 ? Math.min(100, Math.round((taken / allowed) * 100)) : 0;
+
+                      return (
+                        <div key={idx} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-slate-800 uppercase tracking-wider">{bal.leaveType}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              remaining > 0
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}>
+                              {remaining} Days Left
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <Field label="Allowed Days">
+                              <input
+                                type="number"
+                                min="0"
+                                value={bal.allowedDays}
+                                onChange={(e) => {
+                                  const updated = [...form.leaveBalances];
+                                  updated[idx] = { ...updated[idx], allowedDays: parseInt(e.target.value) || 0 };
+                                  set("leaveBalances", updated);
+                                }}
+                                className={INPUT}
+                                placeholder="e.g. 12"
+                              />
+                            </Field>
+                            <Field label="Taken Leaves">
+                              <input
+                                type="number"
+                                min="0"
+                                value={bal.takenLeaves ?? 0}
+                                onChange={(e) => {
+                                  const updated = [...form.leaveBalances];
+                                  updated[idx] = { ...updated[idx], takenLeaves: parseInt(e.target.value) || 0 };
+                                  set("leaveBalances", updated);
+                                }}
+                                className={INPUT}
+                                placeholder="e.g. 0"
+                              />
+                            </Field>
+                          </div>
+
+                          {/* Remaining / Available Days Balance Indicator */}
+                          <div className="pt-2.5 border-t border-slate-200 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-slate-500 font-semibold">Remaining Balance:</span>
+                              <span className="font-black text-[#588b12] text-sm">
+                                {remaining} <span className="text-xs text-slate-400 font-semibold">/ {allowed} Days</span>
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200/80 h-1.5 rounded-full overflow-hidden">
+                              <div
+                                className="bg-[#588b12] h-full rounded-full transition-all duration-300"
+                                style={{ width: `${Math.max(0, 100 - pctUsed)}%` }}
+                              />
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </Section>
@@ -1505,8 +1705,8 @@ export default function EmployeeForm({ mode = "add" }) {
                   {/* Upload Area */}
                   <div
                     className={`flex-1 w-full border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all duration-300 ${isDragOver
-                        ? "border-[#588b12] bg-[#588b12]/5 scale-[0.99]"
-                        : "border-slate-200 hover:border-[#588b12]/60 bg-white hover:bg-slate-50/50"
+                      ? "border-[#588b12] bg-[#588b12]/5 scale-[0.99]"
+                      : "border-slate-200 hover:border-[#588b12]/60 bg-white hover:bg-slate-50/50"
                       }`}
                     onDragOver={(e) => {
                       e.preventDefault();

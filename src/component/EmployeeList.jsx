@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Plus, CheckCircle2, Clock, AlertCircle, ScanFace, Eye, Edit, Trash2, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, CheckCircle2, Clock, AlertCircle, ScanFace, Eye, Edit, Trash2, Calendar, CalendarDays } from 'lucide-react';
 
 const getWorkingDaysCount = (startDate, endDate) => {
   let count = 0;
@@ -33,6 +33,8 @@ const getWorkingDaysCount = (startDate, endDate) => {
 export default function EmployeeList({ employees, navigate, setDeleteModal }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -51,6 +53,20 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
     }
     return matchesSearch;
   });
+
+  // Reset to page 1 whenever filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, roleFilter]);
+
+  const totalEntries = filteredEmployees.length;
+  const totalPages = Math.ceil(totalEntries / itemsPerPage) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+
+  const indexOfLastItem = activePage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentEmployees = filteredEmployees.slice(indexOfFirstItem, indexOfLastItem);
+
   return (
     <>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -117,8 +133,8 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-150/80 text-sm">
-              {filteredEmployees.length > 0 ? (
-                filteredEmployees.map((emp) => (
+              {currentEmployees.length > 0 ? (
+                currentEmployees.map((emp) => (
                   <tr key={emp.id} className="hover:bg-slate-50/40 transition-colors group">
                     <td className="px-6 py-4 font-mono font-bold text-slate-500 group-hover:text-slate-900">
                       {emp.id}
@@ -206,6 +222,13 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
                           <Calendar className="w-[18px] h-[18px]" strokeWidth={2.5} />
                         </button>
                         <button
+                          title="Employee Leave History"
+                          onClick={() => navigate(`/employee-leaves/${emp._id}/${emp.id}`)}
+                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-purple-300 text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer"
+                        >
+                          <CalendarDays className="w-[18px] h-[18px]" strokeWidth={2.5} />
+                        </button>
+                        <button
                           title="View"
                           onClick={() => navigate(`/view-employee/${emp._id}`)}
                           className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-blue-300 text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
@@ -242,12 +265,37 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
         </div>
 
         <div className="bg-slate-50/60 px-6 py-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-          <span>Showing 1 to {filteredEmployees.length} of {filteredEmployees.length} entries</span>
+          <span>
+            Showing {totalEntries === 0 ? 0 : indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalEntries)} of {totalEntries} entries
+          </span>
           <div className="flex items-center gap-1">
-            <button className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100" disabled>&lt;</button>
-            <button className="px-3 py-1 rounded bg-[#588b12] text-white font-bold">1</button>
-            <button className="px-3 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100">2</button>
-            <button className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100">&gt;</button>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={activePage === 1}
+              className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+            >
+              &lt;
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+              <button
+                key={pageNum}
+                onClick={() => setCurrentPage(pageNum)}
+                className={`px-3 py-1 rounded font-bold cursor-pointer transition-all ${
+                  activePage === pageNum
+                    ? 'bg-[#588b12] text-white'
+                    : 'border border-slate-200/60 bg-white text-slate-650 hover:bg-slate-100'
+                }`}
+              >
+                {pageNum}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={activePage === totalPages}
+              className="px-2 py-1 rounded border border-slate-200/60 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+            >
+              &gt;
+            </button>
           </div>
         </div>
       </div>

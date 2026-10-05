@@ -33,7 +33,7 @@ export default function FaceCapture() {
   const [activeTab, setActiveTab] = useState("Up"); // 'Up', 'Down', 'Left', 'Right'
   const [stream, setStream] = useState(null);
   const [isCameraRunning, setIsCameraRunning] = useState(false);
-
+  const [previewImage, setPreviewImage] = useState(null);
   const [captures, setCaptures] = useState({
     Up: [],
     Down: [],
@@ -260,9 +260,9 @@ export default function FaceCapture() {
 
       toast.error(
         err.response?.data?.error ||
-          err.response?.data?.message ||
-          err.message ||
-          "Training failed",
+        err.response?.data?.message ||
+        err.message ||
+        "Training failed",
       );
     } finally {
       setExtractLoading(false);
@@ -339,41 +339,37 @@ export default function FaceCapture() {
               <div className="flex items-center bg-slate-50 p-1.5 rounded-2xl mb-6">
                 <button
                   onClick={() => setActiveTab("Up")}
-                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                    activeTab === "Up"
-                      ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
-                      : "text-slate-500 hover:bg-slate-100"
-                  }`}
+                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === "Up"
+                    ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                    : "text-slate-500 hover:bg-slate-100"
+                    }`}
                 >
                   front ({captures.Up.length}/5)
                 </button>
                 <button
                   onClick={() => setActiveTab("Down")}
-                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                    activeTab === "Down"
-                      ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
-                      : "text-slate-500 hover:bg-slate-100"
-                  }`}
+                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === "Down"
+                    ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                    : "text-slate-500 hover:bg-slate-100"
+                    }`}
                 >
                   up/down ({captures.Down.length}/5)
                 </button>
                 <button
                   onClick={() => setActiveTab("Left")}
-                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                    activeTab === "Left"
-                      ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
-                      : "text-slate-500 hover:bg-slate-100"
-                  }`}
+                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === "Left"
+                    ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                    : "text-slate-500 hover:bg-slate-100"
+                    }`}
                 >
                   Left ({captures.Left.length}/5)
                 </button>
                 <button
                   onClick={() => setActiveTab("Right")}
-                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                    activeTab === "Right"
-                      ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
-                      : "text-slate-500 hover:bg-slate-100"
-                  }`}
+                  className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === "Right"
+                    ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                    : "text-slate-500 hover:bg-slate-100"
+                    }`}
                 >
                   Right ({captures.Right.length}/5)
                 </button>
@@ -385,7 +381,7 @@ export default function FaceCapture() {
                   ref={videoRef}
                   autoPlay
                   playsInline
-                  className={`w-full h-full object-cover transform scale-x-[-1] ${isCameraRunning ? "block" : "hidden"}`}
+                  className={`w-full h-full  transform scale-x-[-1] ${isCameraRunning ? "block" : "hidden"}`}
                 />
 
                 {!isCameraRunning && (
@@ -426,11 +422,10 @@ export default function FaceCapture() {
                 <button
                   onClick={stopCamera}
                   disabled={!isCameraRunning}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-bold border transition-all ${
-                    isCameraRunning
-                      ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
-                      : "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed"
-                  }`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-bold border transition-all ${isCameraRunning
+                    ? "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100"
+                    : "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed"
+                    }`}
                 >
                   <Square className="w-5 h-5 fill-current" />
                   Stop Camera
@@ -471,11 +466,10 @@ export default function FaceCapture() {
                   <button
                     disabled={loading || submitted || getTotalCaptures() === 0}
                     onClick={handleUpload}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 transition-all ${
-                      submitted
-                        ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                        : "bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100"
-                    }`}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 transition-all ${submitted
+                      ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                      : "bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100"
+                      }`}
                   >
                     {loading ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
@@ -537,7 +531,14 @@ export default function FaceCapture() {
                                   alt="Capture"
                                   className="w-full h-full object-cover transform scale-x-[-1]"
                                 />
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-4 items-center justify-center">
+                                  <button
+                                    onClick={() => {setPreviewImage(src)}}
+                                    className="text-xs font-bold bg-blue-500 text-white px-3 py-1.5 rounded-full hover:bg-blue-600 transition-colors shadow-md cursor-pointer"
+                                  >
+                                    Preview
+                                  </button>
+
                                   <button
                                     onClick={() => removeSnapshot(tab, idx)}
                                     className="text-xs font-bold bg-rose-500 text-white px-3 py-1.5 rounded-full hover:bg-rose-600 transition-colors shadow-md cursor-pointer"
@@ -554,6 +555,31 @@ export default function FaceCapture() {
                   </div>
                 )}
               </div>
+
+              {previewImage && (
+                <div
+                  className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+                  onClick={() => setPreviewImage(null)}
+                >
+                  <div
+                    className="relative max-w-4xl max-h-[90vh]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <img
+                      src={previewImage}
+                      alt="Preview"
+                      className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl scale-x-[-1]"
+                    />
+
+                    <button
+                      onClick={() => setPreviewImage(null)}
+                      className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white text-black font-bold shadow-lg hover:bg-gray-200"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </main>

@@ -329,13 +329,13 @@ export default function EmployeeForm({ mode = "add" }) {
             education: data.education?.length
               ? data.education
               : [{ instituteName: "", degree: "", yearOfPassing: "" }],
-            bankDetails: data.bankDetails || {
-              accountHolderName: "",
-              bankName: "",
-              branchName: "",
-              accountNumber: "",
-              ifscCode: "",
-              upiId: "",
+            bankDetails: {
+              accountHolderName: data.bankDetails?.accountHolderName || "",
+              bankName: data.bankDetails?.bankName || "",
+              branchName: data.bankDetails?.branchName || "",
+              accountNumber: data.bankDetails?.accountNumber || "",
+              ifscCode: data.bankDetails?.ifscCode || "",
+              upiId: data.bankDetails?.upiId || "",
             },
             leaveBalances: ["Paid Annual Leave", "Sick Leave", "Casual Leave"].map(type => {
               const prefix = type.toLowerCase().split(' ')[0];
@@ -524,7 +524,7 @@ export default function EmployeeForm({ mode = "add" }) {
       education: form.education,
       bankDetails: form.bankDetails,
       leaveBalances: form.leaveBalances,
-      profilePhoto: photoPreview,
+      // Note: profilePhoto is only set via FormData (multipart) when a new file is picked
     };
 
     try {
@@ -913,14 +913,29 @@ export default function EmployeeForm({ mode = "add" }) {
                       />
                     </Field>
                     <Field label="Designation" required>
-                      <input
-                        type="text"
+                      <select
                         required
                         value={form.designation}
                         onChange={(e) => set("designation", e.target.value)}
-                        className={INPUT}
-                        placeholder="e.g. Physiotherapist"
-                      />
+                        className={SELECT}
+                      >
+                        <option value="">— Select Designation —</option>
+                        <option value="Physiotherapist">Physiotherapist</option>
+                        <option value="Senior Physiotherapist">Senior Physiotherapist</option>
+                        <option value="Junior Physiotherapist">Junior Physiotherapist</option>
+                        <option value="Sports Physiotherapist">Sports Physiotherapist</option>
+                        <option value="Neuro Physiotherapist">Neuro Physiotherapist</option>
+                        <option value="Pediatric Physiotherapist">Pediatric Physiotherapist</option>
+                        <option value="Occupational Therapist">Occupational Therapist</option>
+                        <option value="Clinic Manager">Clinic Manager</option>
+                        <option value="Front Desk / Receptionist">Front Desk / Receptionist</option>
+                        <option value="HR Manager">HR Manager</option>
+                        <option value="Admin">Admin</option>
+                        <option value="Accountant">Accountant</option>
+                        <option value="Nursing Staff">Nursing Staff</option>
+                        <option value="Intern / Trainee">Intern / Trainee</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </Field>
                     <Field label="Source of Hire">
                       <select
@@ -1694,7 +1709,7 @@ export default function EmployeeForm({ mode = "add" }) {
                     {photoPreview && (
                       <button
                         type="button"
-                        onClick={() => setPhotoPreview(null)}
+                        onClick={() => { setPhotoPreview(null); setPhotoFile(null); }}
                         className="text-xs font-bold text-rose-500 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1 rounded-full border border-rose-200 transition-all cursor-pointer"
                       >
                         Remove

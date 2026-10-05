@@ -1931,7 +1931,7 @@ export default function AdminDashboard() {
 
                           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pt-2">
                             <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Incentives</label>
+                              <label className="text-xs font-bold text-slate-700 uppercase">Home Rehab incentives</label>
                               <input
                                 type="number"
                                 value={payrollOverride.incentives}
@@ -1947,7 +1947,7 @@ export default function AdminDashboard() {
                               />
                             </div>
                             <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Bonus</label>
+                              <label className="text-xs font-bold text-slate-700 uppercase">Other Incentives</label>
                               <input
                                 type="number"
                                 value={payrollOverride.performanceBonus}
@@ -1963,7 +1963,7 @@ export default function AdminDashboard() {
                               />
                             </div>
                             <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Special Allow.</label>
+                              <label className="text-xs font-bold text-slate-700 uppercase">Sunday Postings</label>
                               <input
                                 type="number"
                                 value={payrollOverride.specialAllowances}
@@ -1979,7 +1979,7 @@ export default function AdminDashboard() {
                               />
                             </div>
                             <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Travel Allow.</label>
+                              <label className="text-xs font-bold text-slate-700 uppercase">Sunday Home Rehab</label>
                               <input
                                 type="number"
                                 value={payrollOverride.travelAllowance}
@@ -2161,7 +2161,7 @@ export default function AdminDashboard() {
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Incentives (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Home Rehab Incentives (₹)</label>
                             <input
                               type="number"
                               value={editForm.incentives}
@@ -2170,7 +2170,7 @@ export default function AdminDashboard() {
                             />
                           </div>
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Bonus (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Other Incentives (₹)</label>
                             <input
                               type="number"
                               value={editForm.performanceBonus}
@@ -2179,7 +2179,7 @@ export default function AdminDashboard() {
                             />
                           </div>
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Special (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Sunday Postings (₹)</label>
                             <input
                               type="number"
                               value={editForm.specialAllowances}
@@ -2188,7 +2188,7 @@ export default function AdminDashboard() {
                             />
                           </div>
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Travel (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Sunday Home Rehab (₹)</label>
                             <input
                               type="number"
                               value={editForm.travelAllowance}

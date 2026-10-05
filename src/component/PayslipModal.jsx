@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Calendar,
   CreditCard,
+  Image,
 } from "lucide-react";
 import { numberToWordsIndian, maskAccountNumber, getOrdinal } from "../utilities/salaryUtils";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ export default function PayslipModal({
   onClose,
 }) {
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
   const printableRef = useRef(null);
 
   if (!selectedPayslip) return null;
@@ -99,10 +101,6 @@ export default function PayslipModal({
     Number(selectedPayslip.homeRehabIncentives) ||
     Number(selectedPayslip.incentives) ||
     0;
-  const fuelAllowance =
-    Number(selectedPayslip.fuelAllowance) ||
-    Number(selectedPayslip.travelAllowance) ||
-    0;
   const otherIncentives =
     Number(selectedPayslip.otherIncentives) ||
     Number(selectedPayslip.performanceBonus) ||
@@ -113,17 +111,27 @@ export default function PayslipModal({
     0;
   const sundayHomeRehab =
     Number(selectedPayslip.sundayHomeRehab) ||
+    Number(selectedPayslip.travelAllowance) ||
+    0;
+  const otherPayments =
+    Number(selectedPayslip.otherPayments) ||
     Number(selectedPayslip.otherAdditionalPayments) ||
     0;
-  const overtimePay = Number(selectedPayslip.overtimePay) || 0;
+  // OT is stored as hours; calculate ₹ amount using daily rate
+  const dailyRate = basicSalary / (totalWorkingDays || 26);
+  const hourlyRate = dailyRate / 8 || 150;
+  const overtimeHours = Number(selectedPayslip.overtimeHours) || 0;
+  const overtimePay =
+    Number(selectedPayslip.overtimePay) ||
+    Math.round(overtimeHours * hourlyRate);
 
   const grossEarnings =
     basicSalary +
     homeRehabIncentives +
-    fuelAllowance +
     otherIncentives +
     sundayPostings +
     sundayHomeRehab +
+    otherPayments +
     overtimePay;
 
   // Deductions
@@ -184,6 +192,66 @@ export default function PayslipModal({
     }
   };
 
+  // Image Download Handler using html2canvas
+  // Captures the payslip at its FULL natural document size — not the viewport/camera size
+  const handleDownloadImage = async () => {
+    if (!printableRef.current) return;
+    setIsDownloadingImage(true);
+    toast.info("Capturing payslip as image...");
+    try {
+      const html2canvasModule = await import("html2canvas");
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+
+      const element = printableRef.current;
+
+      // Clone element off-screen at full natural width so html2canvas
+      // captures the complete payslip, not just what's visible on screen
+      const NATURAL_WIDTH = 800; // matches max-w-[800px] payslip container
+      const clone = element.cloneNode(true);
+      clone.style.position = "fixed";
+      clone.style.top = "-99999px";
+      clone.style.left = "-99999px";
+      clone.style.width = `${NATURAL_WIDTH}px`;
+      clone.style.height = "auto";
+      clone.style.overflow = "visible";
+      clone.style.zIndex = "-9999";
+      document.body.appendChild(clone);
+
+      // Wait one frame so styles apply
+      await new Promise((r) => requestAnimationFrame(r));
+
+      const canvas = await html2canvas(clone, {
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        width: clone.scrollWidth,
+        height: clone.scrollHeight,
+        windowWidth: NATURAL_WIDTH,
+        windowHeight: clone.scrollHeight,
+        backgroundColor: "#ffffff",
+      });
+
+      document.body.removeChild(clone);
+
+      const sanitizedName = employeeName.replace(/[^a-zA-Z0-9]/g, "_");
+      const filename = `Payslip_${sanitizedName}_${monthStr}.png`;
+
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+
+      toast.success("Payslip image downloaded successfully!");
+    } catch (err) {
+      console.error("Image capture failed:", err);
+      toast.error("Failed to generate image.");
+    } finally {
+      setIsDownloadingImage(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -231,6 +299,18 @@ export default function PayslipModal({
             >
               <Download className="w-3.5 h-3.5" />
               {isDownloading ? "Generating PDF..." : "Download PDF"}
+            </button>
+
+            {/* Download Image Button */}
+            <button
+              type="button"
+              onClick={handleDownloadImage}
+              disabled={isDownloadingImage}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              title="Download Payslip as PNG Image"
+            >
+              <Image className="w-3.5 h-3.5" />
+              {isDownloadingImage ? "Capturing..." : "Save as Image"}
             </button>
 
             {/* Print Button */}
@@ -381,15 +461,9 @@ export default function PayslipModal({
                       </span>
                     </div>
                     <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Home Rehab incentives</span>
+                      <span className="font-medium text-slate-800">Home Rehab Incentives</span>
                       <span className="text-right font-semibold text-slate-900 font-mono">
                         {homeRehabIncentives ? formatCurr(homeRehabIncentives) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Fuel Allowances</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {fuelAllowance ? formatCurr(fuelAllowance) : "-"}
                       </span>
                     </div>
                     <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
@@ -408,6 +482,12 @@ export default function PayslipModal({
                       <span className="font-medium text-slate-800">Sunday Home Rehab</span>
                       <span className="text-right font-semibold text-slate-900 font-mono">
                         {sundayHomeRehab ? formatCurr(sundayHomeRehab) : "-"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
+                      <span className="font-medium text-slate-800">Other Payments</span>
+                      <span className="text-right font-semibold text-slate-900 font-mono">
+                        {otherPayments ? formatCurr(otherPayments) : "-"}
                       </span>
                     </div>
                     <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
@@ -502,66 +582,16 @@ export default function PayslipModal({
             </div>
 
             {/* 6. Payment Details & Official Clinic Stamp */}
-            <div className="border border-slate-900 my-4 p-3 relative overflow-hidden bg-white">
-              <div className="text-center font-black text-xs uppercase tracking-widest text-slate-800 border-b border-slate-300 pb-1 mb-2.5">
-                PAYMENT DETAILS
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Bank Fields */}
-                <div className="space-y-1.5 text-xs">
-                  <div className="flex">
-                    <span className="w-28 font-bold text-slate-700">Bank Name</span>
-                    <span className="font-bold text-slate-900">: {bankName}</span>
-                  </div>
-                  <div className="flex">
-                    <span className="w-28 font-bold text-slate-700">Account No.</span>
-                    <span className="font-bold text-slate-900 font-mono">: {accountNumber}</span>
-                  </div>
-                  <div className="flex">
-                    <span className="w-28 font-bold text-slate-700">IFSC CODE</span>
-                    <span className="font-bold text-slate-900 font-mono">: {ifscCode}</span>
-                  </div>
-                  <div className="flex">
-                    <span className="w-28 font-bold text-slate-700">Payment Date</span>
-                    <span className="font-bold text-slate-900">: {paymentDateFormatted}</span>
-                  </div>
-                </div>
-
-                {/* Authentic Clinical Stamp Replicated from Photo */}
-                <div className="flex items-center justify-end sm:justify-center">
-                  <div className="border-2 border-blue-800/80 rounded-sm p-2 text-blue-900/90 text-center font-sans tracking-tight text-[9px] md:text-[10px] uppercase font-bold leading-tight max-w-[280px] bg-blue-50/30 transform -rotate-1 shadow-sm">
-                    <div className="font-black text-[10px] text-blue-950 border-b border-blue-800/40 pb-0.5 mb-0.5">
-                      Dr. A.VASANTHARAJ., MPT(NEURO), MIAP, MIFNR,
-                    </div>
-                    <div className="text-[9px] font-black text-blue-900">
-                      REG No: 56748
-                    </div>
-                    <div className="font-extrabold text-[9px]">
-                      CHIEF PHYSIOTHERAPIST
-                    </div>
-                    <div className="font-black tracking-wider text-blue-950">
-                      EL-ROI PHYSIO CARE
-                    </div>
-                    <div className="text-[8px] font-semibold text-blue-900/90 lowercase capitalize">
-                      5, Vaanidhaasan St, Kamaraj Nagar, Puducherry - 605011.
-                    </div>
-                    <div className="text-[8.5px] font-black text-blue-950 mt-0.5">
-                      CELL: +91 98292 37774
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+       
 
             {/* 7. Signatures / Approvals (Three Column Layout) */}
-            <div className="grid grid-cols-3 gap-4 pt-10 pb-4 text-center">
-              {/* Prepared By */}
+            {/* <div className="grid grid-cols-3 gap-4 pt-10 pb-4 text-center">
+         
               <div className="space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 block">
                   PREPARED BY
                 </span>
-                {/* Replicated Cursive Signature Stroke */}
+           
                 <div className="h-10 flex items-center justify-center">
                   <svg
                     className="w-24 h-8 text-blue-950"
@@ -580,12 +610,12 @@ export default function PayslipModal({
                 </div>
               </div>
 
-              {/* Approved By */}
+          
               <div className="space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 block">
                   APPROVED BY
                 </span>
-                {/* Replicated Cursive Signature Stroke */}
+              
                 <div className="h-10 flex items-center justify-center">
                   <svg
                     className="w-28 h-8 text-blue-950"
@@ -604,12 +634,12 @@ export default function PayslipModal({
                 </div>
               </div>
 
-              {/* Received By */}
+         
               <div className="space-y-1">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 block">
                   RECEIVED BY
                 </span>
-                {/* Replicated Cursive Signature Stroke */}
+             
                 <div className="h-10 flex items-center justify-center">
                   <svg
                     className="w-24 h-8 text-blue-950"
@@ -621,13 +651,13 @@ export default function PayslipModal({
                   >
                     <path d="M15,22 C30,12 40,28 55,18 C70,12 85,24 105,18" />
                     <path d="M25,32 L95,31" strokeWidth="1" opacity="0.6" />
-                  </svg>
+                  </svg> 
                 </div>
                 <div className="border-t border-slate-700 pt-1 text-[10px] font-bold text-slate-900 truncate">
                   {employeeName}
                 </div>
               </div>
-            </div>
+            </div> */}
 
             {/* 8. Verified Footer Note */}
             <div className="border-t border-slate-200 mt-6 pt-3 text-center text-[10px] text-slate-400 font-medium">
@@ -650,6 +680,15 @@ export default function PayslipModal({
             >
               <Download className="w-3.5 h-3.5" />
               {isDownloading ? "Generating..." : "Download PDF"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadImage}
+              disabled={isDownloadingImage}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Image className="w-3.5 h-3.5" />
+              {isDownloadingImage ? "Capturing..." : "Save as Image"}
             </button>
             <button
               type="button"

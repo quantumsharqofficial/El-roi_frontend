@@ -136,6 +136,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
 
   // Today's attendance state
   const [todayAttendance, setTodayAttendance] = useState(null);
+  const [todayAllRecords, setTodayAllRecords] = useState([]);
   const [punchLoading, setPunchLoading] = useState(false);
 
   // History & logs
@@ -195,7 +196,13 @@ export default function EmployeeAttendance({ employeeDetails }) {
         (a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)
       );
 
-      // Look for today's record - priority to active check-in (checked in but not checked out)
+      // All today's records (sorted ascending by createdAt so Visit 1 first)
+      const todayRecs = [...raw]
+        .filter((r) => formatToISTDateString(r.date || r.createdAt) === todayStr)
+        .sort((a, b) => new Date(a.createdAt || a.date) - new Date(b.createdAt || b.date));
+      setTodayAllRecords(todayRecs);
+
+      // Look for today's active check-in (checked in but not checked out)
       const activeRec = sortedDesc.find((r) => {
         const dStr = formatToISTDateString(r.date || r.createdAt);
         const hasCheckIn = Boolean(r.checkInTime && r.checkInTime !== "--:--");
@@ -258,7 +265,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
     }
   }, [employeeId, selectedMonth, fetchMonthlySummary]);
 
-  // Handle Punch In (Check-in)
+  // Handle Punch In (Check-in) — supports multiple visits per day
   const handleCheckIn = async () => {
     if (!employeeId) {
       toast.error("Employee details not found.");
@@ -267,7 +274,8 @@ export default function EmployeeAttendance({ employeeDetails }) {
     setPunchLoading(true);
     try {
       const todayStr = getTodayISTDateString();
-      const res = await AxiosInstance.post("/attendance/check-in", {
+      // Use /multi-attendance/mark which allows multiple check-ins per day
+      const res = await AxiosInstance.post("/multi-attendance/mark", {
         employee_ID: employeeId,
         name: employeeName,
         date: todayStr,
@@ -275,9 +283,10 @@ export default function EmployeeAttendance({ employeeDetails }) {
         address: "Home Visit",
       });
 
-      toast.success("Home visit check-in successful!");
-      if (res.data?.attendance) {
-        setTodayAttendance(res.data.attendance);
+      const visitNum = todayAllRecords.length + 1;
+      toast.success(`Home Visit ${visitNum} started successfully!`);
+      if (res.data?.data) {
+        setTodayAttendance(res.data.data);
       }
       fetchEmployeeRecords();
       fetchMonthlySummary();
@@ -318,7 +327,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
     }
   };
 
-  // Determine punch card status
+  // Determine punch card status — active record is the one without checkout
   const isCheckedIn = Boolean(
     todayAttendance?.checkInTime &&
     todayAttendance?.checkInTime !== "--:--" &&
@@ -333,7 +342,9 @@ export default function EmployeeAttendance({ employeeDetails }) {
     todayAttendance?.checkOutTime !== "--:--" &&
     todayAttendance?.checkOutTime !== "In Progress..."
   );
-  const notCheckedIn = !todayAttendance?.checkInTime || todayAttendance?.checkInTime === "--:--";
+  const notCheckedIn = todayAllRecords.length === 0;
+  // Allow new visit start if current session is completed (or no session yet)
+  const canStartNewVisit = !isCheckedIn;
 
   // Process Daily Logs with IST display and daily OT
   const processedLogs = useMemo(() => {
@@ -498,38 +509,39 @@ export default function EmployeeAttendance({ employeeDetails }) {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">First Check In</div>
-                <div className="text-base font-bold text-slate-800 mt-0.5">
-                  {todayAttendance?.checkInTime ? formatToIST12Hour(todayAttendance.checkInTime) : "--:--"}
+                <div className="text-[10px] font-bold uppercase text-slate-400">Today's Visits</div>
+                <div className="text-base font-bold text-[#588b12] mt-0.5">
+                  {todayAllRecords.length} <span className="text-xs font-semibold text-slate-400">Session{todayAllRecords.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">Last Check Out</div>
+                <div className="text-[10px] font-bold uppercase text-slate-400">Current Visit In</div>
                 <div className="text-base font-bold text-slate-800 mt-0.5">
-                  {todayAttendance?.checkOutTime ? formatToIST12Hour(todayAttendance.checkOutTime) : isCheckedIn ? "In Progress..." : "--:--"}
+                  {isCheckedIn && todayAttendance?.checkInTime ? formatToIST12Hour(todayAttendance.checkInTime) : "--:--"}
                 </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">Hours Logged</div>
+                <div className="text-[10px] font-bold uppercase text-slate-400">Total Hours Today</div>
                 <div className="text-base font-bold text-slate-800 mt-0.5">
-                  {todayAttendance?.checkInTime && todayAttendance?.checkOutTime
-                    ? formatMinutesToDuration(getDurationMinutes(todayAttendance.checkInTime, todayAttendance.checkOutTime))
-                    : isCheckedIn
-                    ? "In Progress"
-                    : "0h 00m"}
+                  {(() => {
+                    const totalMins = todayAllRecords.reduce((acc, r) => {
+                      return acc + getDurationMinutes(r.checkInTime, r.checkOutTime);
+                    }, 0);
+                    return totalMins > 0 ? formatMinutesToDuration(totalMins) : isCheckedIn ? "In Progress" : "0h 00m";
+                  })()}
                 </div>
               </div>
 
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
                 <div className="text-[10px] font-bold uppercase text-slate-400">Today's OT</div>
                 <div className="text-base font-bold text-[#588b12] mt-0.5">
-                  {todayAttendance?.checkInTime && todayAttendance?.checkOutTime
-                    ? Math.max(0, getDurationMinutes(todayAttendance.checkInTime, todayAttendance.checkOutTime) - 480) > 0
-                      ? formatMinutesToDuration(Math.max(0, getDurationMinutes(todayAttendance.checkInTime, todayAttendance.checkOutTime) - 480))
-                      : "0h 00m"
-                    : "--"}
+                  {(() => {
+                    const totalMins = todayAllRecords.reduce((acc, r) => acc + getDurationMinutes(r.checkInTime, r.checkOutTime), 0);
+                    const ot = Math.max(0, totalMins - 480);
+                    return ot > 0 ? formatMinutesToDuration(ot) : "0h 00m";
+                  })()}
                 </div>
               </div>
             </div>
@@ -547,7 +559,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
               }`}
             >
               <LogIn className="w-4 h-4" />
-              {punchLoading ? "Processing..." : isCompleted ? "Home Visit Start" : "Home Visit Start"}
+              {punchLoading ? "Processing..." : todayAllRecords.length > 0 && canStartNewVisit ? `Start Visit ${todayAllRecords.length + 1}` : "Home Visit Start"}
             </button>
 
             <button
@@ -564,6 +576,58 @@ export default function EmployeeAttendance({ employeeDetails }) {
             </button>
           </div>
         </div>
+
+        {/* Today's Sessions List */}
+        {todayAllRecords.length > 0 && (
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Today's Visit Sessions</h4>
+            <div className="space-y-2">
+              {todayAllRecords.map((rec, idx) => {
+                const isActive = Boolean(
+                  rec.checkInTime && (!rec.checkOutTime || rec.checkOutTime === "--:--" || rec.checkOutTime === "In Progress...")
+                );
+                const dur = rec.checkInTime && rec.checkOutTime && rec.checkOutTime !== "--:--"
+                  ? formatMinutesToDuration(getDurationMinutes(rec.checkInTime, rec.checkOutTime))
+                  : null;
+                return (
+                  <div
+                    key={rec._id || idx}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl border text-xs ${
+                      isActive
+                        ? "bg-emerald-50 border-emerald-200"
+                        : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] ${
+                        isActive ? "bg-emerald-500 text-white" : "bg-slate-300 text-slate-700"
+                      }`}>{idx + 1}</span>
+                      <div>
+                        <div className="font-bold text-slate-800">Visit {idx + 1}</div>
+                        <div className="text-slate-500">
+                          <span className="font-semibold text-[#588b12]">{rec.checkInTime ? formatToIST12Hour(rec.checkInTime) : "--:--"}</span>
+                          <span className="mx-1.5 text-slate-300">→</span>
+                          <span className={isActive ? "text-blue-600 italic" : "font-semibold text-slate-700"}>
+                            {rec.checkOutTime && rec.checkOutTime !== "--:--" ? formatToIST12Hour(rec.checkOutTime) : isActive ? "In Progress..." : "--:--"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {isActive ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Active
+                        </span>
+                      ) : dur ? (
+                        <span className="font-bold text-slate-700">{dur}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Monthly Quick Metric Badges ───────────────────────────────────── */}

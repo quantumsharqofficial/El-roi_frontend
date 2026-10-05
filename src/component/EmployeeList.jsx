@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Plus, CheckCircle2, Clock, AlertCircle, ScanFace, Eye, Edit, Trash2, Calendar, CalendarDays } from 'lucide-react';
 
 const getWorkingDaysCount = (startDate, endDate) => {
@@ -33,6 +33,12 @@ const getWorkingDaysCount = (startDate, endDate) => {
 export default function EmployeeList({ employees, navigate, setDeleteModal }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
+
+  // Build unique designation options dynamically from employee list
+  const designationOptions = useMemo(() => {
+    const unique = [...new Set(employees.map(e => e.designation).filter(Boolean))].sort();
+    return unique;
+  }, [employees]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -42,16 +48,7 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
       emp.designation.toLowerCase().includes(searchTerm.toLowerCase());
 
     if (roleFilter === 'All') return matchesSearch;
-    if (roleFilter === 'Physiotherapists') {
-      return matchesSearch && emp.designation.toLowerCase().includes('physiotherapist');
-    }
-    if (roleFilter === 'Admin') {
-      return matchesSearch && emp.department.toLowerCase() === 'admin';
-    }
-    if (roleFilter === 'New Joinees') {
-      return matchesSearch && emp.dateOfJoining.includes('2024');
-    }
-    return matchesSearch;
+    return matchesSearch && emp.designation === roleFilter;
   });
 
   // Reset to page 1 whenever filter or search changes
@@ -97,22 +94,18 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {['All', 'Physiotherapists', 'Admin', 'New Joinees'].map((filter) => {
-            const isActive = roleFilter === filter;
-            return (
-              <button
-                key={filter}
-                onClick={() => setRoleFilter(filter)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isActive
-                  ? 'bg-[#588b12] text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-650 hover:bg-slate-200/60'
-                  }`}
-              >
-                {filter}
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-2">
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="pl-3 pr-8 py-2 rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:border-[#588b12] focus:bg-white text-xs font-bold text-slate-700 transition-all cursor-pointer appearance-none"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+          >
+            <option value="All">All Designations</option>
+            {designationOptions.map((desig) => (
+              <option key={desig} value={desig}>{desig}</option>
+            ))}
+          </select>
         </div>
       </div>
 

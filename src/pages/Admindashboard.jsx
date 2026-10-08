@@ -238,7 +238,7 @@ export default function AdminDashboard() {
       setLeaves(prev => prev.map(l => l._id === id ? res.data : l));
       toast.success(`Leave request status updated to ${status}`);
       // Refresh employees list so leave balance changes reflect immediately
-      AxiosInstance.get('/employees').then(r => setEmployees(formatEmployeeList(r.data || []))).catch(() => {});
+      AxiosInstance.get('/employees').then(r => setEmployees(formatEmployeeList(r.data || []))).catch(() => { });
     } catch (err) {
       toast.error("Failed to update leave status.");
     }
@@ -250,7 +250,7 @@ export default function AdminDashboard() {
       await AxiosInstance.delete(`/leaves/${id}`);
       setLeaves(prev => prev.filter(l => l._id !== id));
       toast.success("Leave request deleted successfully.");
-      AxiosInstance.get('/employees').then(r => setEmployees(formatEmployeeList(r.data || []))).catch(() => {});
+      AxiosInstance.get('/employees').then(r => setEmployees(formatEmployeeList(r.data || []))).catch(() => { });
     } catch (err) {
       toast.error("Failed to delete leave request.");
     }
@@ -422,15 +422,20 @@ export default function AdminDashboard() {
 
       const dailyRate = data.basicSalary / (data.totalWorkingDays || 26);
       const leaveDeductionsVal = 0;
-      const netVal = data.basicSalary + (data.overtimeHours * (dailyRate / 8 || 150));
+      const netVal = data.basicSalary;
 
       setPayrollOverride({
         basicSalary: data.basicSalary || 0,
+        actualWorkingDays: data.actualWorkingDays || 0,
         unpaidLeavesCount: 0,
         paidLeavesCount: data.approvedLeaveDays || 0,
         leaveDeductions: leaveDeductionsVal,
+        lateComingDeductions: 0,
+        otherDeductions: 0,
         overtimeHours: data.overtimeHours || 0,
+        overtimePay: 0,
         incentives: 0,
+        fuelAllowance: 0,
         performanceBonus: 0,
         specialAllowances: 0,
         travelAllowance: 0,
@@ -450,7 +455,7 @@ export default function AdminDashboard() {
         employeeName: payrollData.employeeName,
         month: payrollMonth,
         totalWorkingDays: payrollData.totalWorkingDays,
-        actualWorkingDays: payrollData.actualWorkingDays,
+        actualWorkingDays: payrollOverride.actualWorkingDays !== undefined ? payrollOverride.actualWorkingDays : payrollData.actualWorkingDays,
         actualWorkingHours: payrollData.actualWorkingHours,
         status: statusVal,
         ...payrollOverride
@@ -466,23 +471,32 @@ export default function AdminDashboard() {
 
   const handleOpenEdit = (item) => {
     setEditingPayroll(item);
+    const basic = Number(item.basicSalary) || 0;
+    const days = Number(item.totalWorkingDays) || 26;
+    const otHours = Number(item.overtimeHours) || 0;
+    const calculatedOtPay = Math.round(otHours * (basic / (days || 26) / 8 || 150));
+
     setEditForm({
       employeeId: item.employeeId,
       employeeEID: item.employeeEID,
       employeeName: item.employeeName,
       month: item.month || payrollMonth,
-      basicSalary: Number(item.basicSalary) || 0,
-      totalWorkingDays: Number(item.totalWorkingDays) || 26,
+      basicSalary: basic,
+      totalWorkingDays: days,
       actualWorkingDays: Number(item.actualWorkingDays) || 0,
       actualWorkingHours: Number(item.actualWorkingHours) || 0,
-      overtimeHours: Number(item.overtimeHours) || 0,
+      overtimeHours: otHours,
+      overtimePay: Number(item.overtimePay) || 0,
       paidLeavesCount: Number(item.paidLeavesCount) || 0,
       unpaidLeavesCount: Number(item.unpaidLeavesCount) || 0,
       leaveDeductions: Number(item.leaveDeductions) || 0,
-      incentives: Number(item.incentives) || 0,
-      performanceBonus: Number(item.performanceBonus) || 0,
-      specialAllowances: Number(item.specialAllowances) || 0,
-      travelAllowance: Number(item.travelAllowance) || 0,
+      lateComingDeductions: Number(item.lateComingDeductions) || 0,
+      otherDeductions: Number(item.otherDeductions) || 0,
+      incentives: Number(item.incentives || item.homeRehabIncentives) || 0,
+      fuelAllowance: Number(item.fuelAllowance || item.fuelAllowances) || 0,
+      performanceBonus: Number(item.performanceBonus || item.otherIncentives) || 0,
+      specialAllowances: Number(item.specialAllowances || item.sundayPostings) || 0,
+      travelAllowance: Number(item.travelAllowance || item.sundayHomeRehab) || 0,
       otherAdditionalPayments: Number(item.otherAdditionalPayments) || 0,
       payableSalary: Number(item.payableSalary) || 0,
       status: item.status === 'Paid' ? 'Paid' : 'Draft',
@@ -505,18 +519,23 @@ export default function AdminDashboard() {
         leaveDed = Math.round(unpaidCount * dailyRate);
         updated.leaveDeductions = leaveDed;
       }
+      const lateDed = parseFloat(field === 'lateComingDeductions' ? value : updated.lateComingDeductions) || 0;
+      const otherDed = parseFloat(field === 'otherDeductions' ? value : updated.otherDeductions) || 0;
 
       const otHours = parseFloat(field === 'overtimeHours' ? value : updated.overtimeHours) || 0;
-      const otPay = Math.round(otHours * hourlyRate);
+      const otPay = parseFloat(field === 'overtimePay' ? value : updated.overtimePay) || 0;
 
       const incentives = parseFloat(field === 'incentives' ? value : updated.incentives) || 0;
+      const fuelAllowance = parseFloat(field === 'fuelAllowance' ? value : updated.fuelAllowance) || 0;
       const bonus = parseFloat(field === 'performanceBonus' ? value : updated.performanceBonus) || 0;
       const special = parseFloat(field === 'specialAllowances' ? value : updated.specialAllowances) || 0;
       const travel = parseFloat(field === 'travelAllowance' ? value : updated.travelAllowance) || 0;
       const other = parseFloat(field === 'otherAdditionalPayments' ? value : updated.otherAdditionalPayments) || 0;
 
       if (field !== 'payableSalary') {
-        const net = Math.round(basic - leaveDed + otPay + incentives + bonus + special + travel + other);
+        const totalEarnings = basic + otPay + incentives + fuelAllowance + bonus + special + travel + other;
+        const totalDeductions = leaveDed + lateDed + otherDed;
+        const net = Math.round(totalEarnings - totalDeductions);
         updated.payableSalary = Math.max(0, net);
       }
 
@@ -557,10 +576,14 @@ export default function AdminDashboard() {
         actualWorkingDays: item.actualWorkingDays,
         actualWorkingHours: item.actualWorkingHours,
         overtimeHours: item.overtimeHours,
+        overtimePay: item.overtimePay,
         paidLeavesCount: item.paidLeavesCount,
         unpaidLeavesCount: item.unpaidLeavesCount,
         leaveDeductions: item.leaveDeductions,
+        lateComingDeductions: item.lateComingDeductions,
+        otherDeductions: item.otherDeductions,
         incentives: item.incentives,
+        fuelAllowance: item.fuelAllowance,
         performanceBonus: item.performanceBonus,
         specialAllowances: item.specialAllowances,
         travelAllowance: item.travelAllowance,
@@ -1447,7 +1470,7 @@ export default function AdminDashboard() {
                   </button>
 
                   {/* Sub-tab view toggle */}
-                  <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+                  {/* <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/80">
                     <button
                       type="button"
                       onClick={() => setPayrollSubTab('list')}
@@ -1471,7 +1494,7 @@ export default function AdminDashboard() {
                       <Calculator className="w-3.5 h-3.5" />
                       Individual Calculator
                     </button>
-                  </div>
+                  </div> */}
                 </div>
               </div>
 
@@ -1564,11 +1587,10 @@ export default function AdminDashboard() {
                           key={st}
                           type="button"
                           onClick={() => setPayrollStatusFilter(st)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                            payrollStatusFilter === st
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${payrollStatusFilter === st
                               ? 'bg-slate-900 text-white shadow-sm'
                               : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
-                          }`}
+                            }`}
                         >
                           {st}
                           {st === 'All' && ` (${monthlyPayrolls.length})`}
@@ -1829,9 +1851,22 @@ export default function AdminDashboard() {
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Working Days</span>
                             <span className="text-xl font-extrabold text-slate-800">{payrollData.totalWorkingDays} Days (Excl. Sun)</span>
                           </div>
-                          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Actual Days Present</span>
-                            <span className="text-xl font-extrabold text-slate-800">{payrollData.actualWorkingDays} Days</span>
+                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 flex flex-col justify-between">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Actual Days Present</label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min="0"
+                                max={payrollData.totalWorkingDays || 31}
+                                value={payrollOverride.actualWorkingDays !== undefined ? payrollOverride.actualWorkingDays : (payrollData.actualWorkingDays || 0)}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  setPayrollOverride(prev => ({ ...prev, actualWorkingDays: val }));
+                                }}
+                                className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1 text-sm font-extrabold text-slate-800 focus:outline-none focus:border-[#588b12]"
+                              />
+                              <span className="text-xs font-bold text-slate-500">Days</span>
+                            </div>
                           </div>
                           <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Actual Working Hours</span>
@@ -1845,170 +1880,251 @@ export default function AdminDashboard() {
 
                         {/* Pay Structure & Overrides */}
                         <div className="space-y-4">
-                          <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider border-b border-slate-100 pb-1">Earnings & Deductions</h4>
+                          {/* EARNINGS */}
+                          <div className="space-y-3">
+                            <span className="font-extrabold text-[#588b12] uppercase tracking-wider text-[11px] block border-b border-lime-200 pb-1">
+                              EARNINGS
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Basic Salary (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.basicSalary}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimePay || 0;
+                                      const earnings = val + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, basicSalary: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800"
+                                />
+                              </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Basic Salary (₹)</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.basicSalary}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const net = val - prev.leaveDeductions + (prev.overtimeHours * (val / (payrollData.totalWorkingDays || 26) / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, basicSalary: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800"
-                              />
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Home Rehab incentives (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.incentives}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimePay || 0;
+                                      const earnings = prev.basicSalary + otPay + val + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, incentives: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Fuel Allowances (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.fuelAllowance || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimePay || 0;
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + val + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, fuelAllowance: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold"
+                                />
+                              </div>
                             </div>
 
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Overtime Hours</label>
-                              <input
-                                type="number"
-                                step="0.5"
-                                value={payrollOverride.overtimeHours}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - prev.leaveDeductions + (val * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, overtimeHours: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-lime-700"
-                              />
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Other Incentives (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.performanceBonus}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimePay || 0;
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + val + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, performanceBonus: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Sunday Postings (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.specialAllowances}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimePay || 0;
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + val + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, specialAllowances: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Sunday Home Rehab (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.travelAllowance}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimePay || 0;
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + val + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, travelAllowance: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold"
+                                />
+                              </div>
                             </div>
 
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Leave Deductions (₹)</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.leaveDeductions}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - val + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, leaveDeductions: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-600"
-                              />
+                            {/* Overtime Hours & Overtime Incentive Pair */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-lime-50/50 p-3 rounded-2xl border border-lime-200/80">
+                              <div>
+                                <label className="text-xs font-bold text-slate-800 uppercase block mb-1">Overtime Hours (hrs)</label>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  value={payrollOverride.overtimeHours}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => ({ ...prev, overtimeHours: val }));
+                                  }}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold focus:outline-none focus:border-[#588b12]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-800 uppercase block mb-1">Overtime Incentive (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.overtimePay || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const earnings = prev.basicSalary + val + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, overtimePay: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700 font-bold focus:outline-none focus:border-[#588b12]"
+                                />
+                              </div>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Paid Leaves Count</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.paidLeavesCount}
-                                onChange={(e) => setPayrollOverride({ ...payrollOverride, paidLeavesCount: parseInt(e.target.value) || 0 })}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Unpaid Leaves Count</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.unpaidLeavesCount}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  const dailyRate = payrollOverride.basicSalary / (payrollData.totalWorkingDays || 26);
-                                  const ded = Math.round(val * dailyRate);
-                                  setPayrollOverride(prev => {
-                                    const net = prev.basicSalary - ded + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, unpaidLeavesCount: val, leaveDeductions: ded, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-500"
-                              />
-                            </div>
-                          </div>
+                          {/* DEDUCTIONS */}
+                          <div className="space-y-3 pt-2">
+                            <span className="font-extrabold text-rose-700 uppercase tracking-wider text-[11px] block border-b border-rose-200 pb-1">
+                              DEDUCTIONS
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Leave Deductions (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.leaveDeductions}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
+                                      const otPay = prev.overtimeHours * (dailyRate / 8 || 150);
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = val + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, leaveDeductions: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-600"
+                                />
+                              </div>
 
-                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 pt-2">
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Home Rehab incentives</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.incentives}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + val + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, incentives: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
-                              />
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Late Coming Deductions (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.lateComingDeductions || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
+                                      const otPay = prev.overtimeHours * (dailyRate / 8 || 150);
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + val + (prev.otherDeductions || 0);
+                                      return { ...prev, lateComingDeductions: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-600"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Other Deductions (₹)</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.otherDeductions || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPayrollOverride(prev => {
+                                      const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
+                                      const otPay = prev.overtimeHours * (dailyRate / 8 || 150);
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = prev.leaveDeductions + (prev.lateComingDeductions || 0) + val;
+                                      return { ...prev, otherDeductions: val, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-600"
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Other Incentives</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.performanceBonus}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + val + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, performanceBonus: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Sunday Postings</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.specialAllowances}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + val + prev.travelAllowance + prev.otherAdditionalPayments;
-                                    return { ...prev, specialAllowances: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Sunday Home Rehab</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.travelAllowance}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + val + prev.otherAdditionalPayments;
-                                    return { ...prev, travelAllowance: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs font-bold text-slate-700 uppercase">Other Payments</label>
-                              <input
-                                type="number"
-                                value={payrollOverride.otherAdditionalPayments}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setPayrollOverride(prev => {
-                                    const dailyRate = prev.basicSalary / (payrollData.totalWorkingDays || 26);
-                                    const net = prev.basicSalary - prev.leaveDeductions + (prev.overtimeHours * (dailyRate / 8 || 150)) + prev.incentives + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + val;
-                                    return { ...prev, otherAdditionalPayments: val, payableSalary: Math.round(net) };
-                                  });
-                                }}
-                                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-lime-700"
-                              />
+
+                            <div className="grid grid-cols-2 gap-4 pt-1">
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Paid Leaves Count</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.paidLeavesCount}
+                                  onChange={(e) => setPayrollOverride({ ...payrollOverride, paidLeavesCount: parseInt(e.target.value) || 0 })}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Unpaid Leaves Count</label>
+                                <input
+                                  type="number"
+                                  value={payrollOverride.unpaidLeavesCount}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value) || 0;
+                                    const dailyRate = payrollOverride.basicSalary / (payrollData.totalWorkingDays || 26);
+                                    const ded = Math.round(val * dailyRate);
+                                    setPayrollOverride(prev => {
+                                      const otPay = prev.overtimeHours * (dailyRate / 8 || 150);
+                                      const earnings = prev.basicSalary + otPay + prev.incentives + (prev.fuelAllowance || 0) + prev.performanceBonus + prev.specialAllowances + prev.travelAllowance + prev.otherAdditionalPayments;
+                                      const deds = ded + (prev.lateComingDeductions || 0) + (prev.otherDeductions || 0);
+                                      return { ...prev, unpaidLeavesCount: val, leaveDeductions: ded, payableSalary: Math.max(0, Math.round(earnings - deds)) };
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-rose-500"
+                                />
+                              </div>
                             </div>
                           </div>
 
@@ -2087,8 +2203,18 @@ export default function AdminDashboard() {
                           <span className="text-base font-black text-slate-800">{editForm.totalWorkingDays} Days</span>
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Actual Days Present</span>
-                          <span className="text-base font-black text-slate-800">{editForm.actualWorkingDays} Days</span>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Actual Days Present</label>
+                          <div className="flex items-center justify-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              max={editForm.totalWorkingDays || 31}
+                              value={editForm.actualWorkingDays !== undefined ? editForm.actualWorkingDays : 0}
+                              onChange={(e) => handleEditInputChange('actualWorkingDays', parseFloat(e.target.value) || 0)}
+                              className="w-20 bg-white border border-slate-300 rounded-lg px-2 py-0.5 text-center text-sm font-black text-slate-800 focus:outline-none focus:border-[#588b12]"
+                            />
+                            <span className="text-xs font-bold text-slate-600">Days</span>
+                          </div>
                         </div>
                         <div>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Hours</span>
@@ -2096,114 +2222,158 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* Primary Earnings & Deductions Inputs */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Basic Salary (₹) *</label>
-                          <input
-                            type="number"
-                            value={editForm.basicSalary}
-                            onChange={(e) => handleEditInputChange('basicSalary', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-slate-900 focus:outline-none focus:border-[#588b12] focus:bg-white"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Overtime Hours</label>
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={editForm.overtimeHours}
-                            onChange={(e) => handleEditInputChange('overtimeHours', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12] focus:bg-white"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Leave Deductions (₹)</label>
-                          <input
-                            type="number"
-                            value={editForm.leaveDeductions}
-                            onChange={(e) => handleEditInputChange('leaveDeductions', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-rose-600 focus:outline-none focus:border-rose-400 focus:bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Leaves Breakdown */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Paid Leaves Count</label>
-                          <input
-                            type="number"
-                            value={editForm.paidLeavesCount}
-                            onChange={(e) => handleEditInputChange('paidLeavesCount', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase block mb-1">Unpaid Leaves Count</label>
-                          <input
-                            type="number"
-                            value={editForm.unpaidLeavesCount}
-                            onChange={(e) => handleEditInputChange('unpaidLeavesCount', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-rose-600"
-                          />
-                          <span className="text-[10px] text-slate-400 mt-0.5 block">Auto-recalculates leave deduction based on daily rate</span>
-                        </div>
-                      </div>
-
-                      {/* Incentives, Bonuses & Allowances */}
-                      <div className="space-y-2 pt-1">
-                        <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] block border-b border-slate-100 pb-1">
-                          Incentives & Allowances (Auto-adds to Net Salary)
+                      {/* EARNINGS SECTION */}
+                      <div className="space-y-3 pt-1">
+                        <span className="font-extrabold text-[#588b12] uppercase tracking-wider text-[11px] block border-b border-lime-200 pb-1">
+                          EARNINGS
                         </span>
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Home Rehab Incentives (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Basic Salary (₹) *</label>
+                            <input
+                              type="number"
+                              value={editForm.basicSalary}
+                              onChange={(e) => handleEditInputChange('basicSalary', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-slate-900 focus:outline-none focus:border-[#588b12] focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Home Rehab incentives (₹)</label>
                             <input
                               type="number"
                               value={editForm.incentives}
                               onChange={(e) => handleEditInputChange('incentives', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-lime-700"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12] focus:bg-white"
                             />
                           </div>
+
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Other Incentives (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Fuel Allowances (₹)</label>
+                            <input
+                              type="number"
+                              value={editForm.fuelAllowance}
+                              onChange={(e) => handleEditInputChange('fuelAllowance', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12] focus:bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Other Incentives (₹)</label>
                             <input
                               type="number"
                               value={editForm.performanceBonus}
                               onChange={(e) => handleEditInputChange('performanceBonus', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-lime-700"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12] focus:bg-white"
                             />
                           </div>
+
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Sunday Postings (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Sunday Postings (₹)</label>
                             <input
                               type="number"
                               value={editForm.specialAllowances}
                               onChange={(e) => handleEditInputChange('specialAllowances', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-lime-700"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12] focus:bg-white"
                             />
                           </div>
+
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Sunday Home Rehab (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Sunday Home Rehab (₹)</label>
                             <input
                               type="number"
                               value={editForm.travelAllowance}
                               onChange={(e) => handleEditInputChange('travelAllowance', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-lime-700"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12] focus:bg-white"
                             />
                           </div>
+                        </div>
+
+                        {/* Overtime Hours & Overtime Incentive Pair */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-lime-50/50 p-3 rounded-2xl border border-lime-200/80">
                           <div>
-                            <label className="text-[11px] font-bold text-slate-600 block mb-1">Other (₹)</label>
+                            <label className="text-[11px] font-bold text-slate-800 block mb-1">Overtime Hours (hrs)</label>
                             <input
                               type="number"
-                              value={editForm.otherAdditionalPayments}
-                              onChange={(e) => handleEditInputChange('otherAdditionalPayments', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-lime-700"
+                              step="0.5"
+                              value={editForm.overtimeHours}
+                              onChange={(e) => handleEditInputChange('overtimeHours', e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12]"
                             />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-800 block mb-1">Overtime Incentive (₹)</label>
+                            <input
+                              type="number"
+                              value={editForm.overtimePay || 0}
+                              onChange={(e) => handleEditInputChange('overtimePay', e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-lime-700 focus:outline-none focus:border-[#588b12]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* DEDUCTIONS SECTION */}
+                      <div className="space-y-3 pt-2">
+                        <span className="font-extrabold text-rose-700 uppercase tracking-wider text-[11px] block border-b border-rose-200 pb-1">
+                          DEDUCTIONS
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Leave Deductions (₹)</label>
+                            <input
+                              type="number"
+                              value={editForm.leaveDeductions}
+                              onChange={(e) => handleEditInputChange('leaveDeductions', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-rose-600 focus:outline-none focus:border-rose-400 focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Late Coming Deductions (₹)</label>
+                            <input
+                              type="number"
+                              value={editForm.lateComingDeductions}
+                              onChange={(e) => handleEditInputChange('lateComingDeductions', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-rose-600 focus:outline-none focus:border-rose-400 focus:bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Other Deductions (₹)</label>
+                            <input
+                              type="number"
+                              value={editForm.otherDeductions}
+                              onChange={(e) => handleEditInputChange('otherDeductions', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-sm text-rose-600 focus:outline-none focus:border-rose-400 focus:bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Leaves Breakdown */}
+                        <div className="grid grid-cols-2 gap-4 pt-1">
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Paid Leaves Count</label>
+                            <input
+                              type="number"
+                              value={editForm.paidLeavesCount}
+                              onChange={(e) => handleEditInputChange('paidLeavesCount', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-800"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Unpaid Leaves Count</label>
+                            <input
+                              type="number"
+                              value={editForm.unpaidLeavesCount}
+                              onChange={(e) => handleEditInputChange('unpaidLeavesCount', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-rose-600"
+                            />
+                            <span className="text-[10px] text-slate-400 mt-0.5 block">Auto-recalculates leave deduction based on daily rate</span>
                           </div>
                         </div>
                       </div>
@@ -2296,254 +2466,251 @@ export default function AdminDashboard() {
           {/* Active Tab: Leaves */}
           {activeTab === 'Leaves' && (
             <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Employee Leaves Management</h2>
+                  <p className="text-xs text-slate-500 mt-1">Review employee leave applications, balances, approvals, and history</p>
+                </div>
+                <button
+                  onClick={() => setIsApplyingLeave(true)}
+                  className="bg-[#588b12] hover:bg-[#4a750f] text-white px-4.5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer animate-fade-in"
+                >
+                  <Plus className="w-4 h-4" />
+                  Apply Leave (On Behalf)
+                </button>
+              </div>
+
+              {/* KPI Cards Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
+                    <Calendar className="w-6 h-6" />
+                  </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Employee Leaves Management</h2>
-                    <p className="text-xs text-slate-500 mt-1">Review employee leave applications, balances, approvals, and history</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Applications</p>
+                    <h4 className="text-xl font-extrabold text-slate-900 mt-0.5">{leaves.length}</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">All historical requests</p>
                   </div>
-                  <button
-                    onClick={() => setIsApplyingLeave(true)}
-                    className="bg-[#588b12] hover:bg-[#4a750f] text-white px-4.5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer animate-fade-in"
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Pending Approval</p>
+                    <h4 className="text-xl font-extrabold text-amber-700 mt-0.5">{pendingCount}</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Requires HR action</p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-lime-50 text-lime-700 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-lime-700">Approved Leaves</p>
+                    <h4 className="text-xl font-extrabold text-lime-700 mt-0.5">{approvedCount}</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Deducted from balance</p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Rejected</p>
+                    <h4 className="text-xl font-extrabold text-rose-700 mt-0.5">{rejectedCount}</h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Declined applications</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters Row */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Search</label>
+                  <div className="relative">
+                    <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search employee name, ID, reason..."
+                      value={leaveSearchQuery}
+                      onChange={(e) => setLeaveSearchQuery(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Status</label>
+                  <select
+                    value={leaveStatusFilter}
+                    onChange={(e) => setLeaveStatusFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-semibold text-slate-700"
                   >
-                    <Plus className="w-4 h-4" />
-                    Apply Leave (On Behalf)
-                  </button>
+                    <option value="All">All Statuses</option>
+                    <option value="Pending HR">Pending HR</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
                 </div>
 
-                {/* KPI Cards Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                      <Calendar className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Applications</p>
-                      <h4 className="text-xl font-extrabold text-slate-900 mt-0.5">{leaves.length}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">All historical requests</p>
-                    </div>
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Leave Type</label>
+                  <select
+                    value={leaveTypeFilter}
+                    onChange={(e) => setLeaveTypeFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-semibold text-slate-700"
+                  >
+                    <option value="All">All Leave Types</option>
+                    <option value="Casual Leave">Casual Leave</option>
+                    <option value="Sick Leave">Sick Leave</option>
+                    <option value="Paid Annual Leave">Paid Annual Leave</option>
+                    <option value="Unpaid Sick Leave">Unpaid Sick Leave</option>
+                  </select>
+                </div>
+              </div>
 
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                      <Clock className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Pending Approval</p>
-                      <h4 className="text-xl font-extrabold text-amber-700 mt-0.5">{pendingCount}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Requires HR action</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-lime-50 text-lime-700 flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-lime-700">Approved Leaves</p>
-                      <h4 className="text-xl font-extrabold text-lime-700 mt-0.5">{approvedCount}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Deducted from balance</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                      <AlertCircle className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Rejected</p>
-                      <h4 className="text-xl font-extrabold text-rose-700 mt-0.5">{rejectedCount}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Declined applications</p>
-                    </div>
-                  </div>
+              {/* Leaves Table */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="font-bold text-slate-900 text-base">Employee Leave Applications</h3>
+                  <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
+                    Showing: {filteredLeaves.length} of {leaves.length}
+                  </span>
                 </div>
 
-                {/* Filters Row */}
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Search</label>
-                    <div className="relative">
-                      <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Search employee name, ID, reason..."
-                        value={leaveSearchQuery}
-                        onChange={(e) => setLeaveSearchQuery(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-medium"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Status</label>
-                    <select
-                      value={leaveStatusFilter}
-                      onChange={(e) => setLeaveStatusFilter(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-semibold text-slate-700"
-                    >
-                      <option value="All">All Statuses</option>
-                      <option value="Pending HR">Pending HR</option>
-                      <option value="Approved">Approved</option>
-                      <option value="Rejected">Rejected</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Leave Type</label>
-                    <select
-                      value={leaveTypeFilter}
-                      onChange={(e) => setLeaveTypeFilter(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-semibold text-slate-700"
-                    >
-                      <option value="All">All Leave Types</option>
-                      <option value="Casual Leave">Casual Leave</option>
-                      <option value="Sick Leave">Sick Leave</option>
-                      <option value="Paid Annual Leave">Paid Annual Leave</option>
-                      <option value="Unpaid Sick Leave">Unpaid Sick Leave</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Leaves Table */}
-                <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-                  <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="font-bold text-slate-900 text-base">Employee Leave Applications</h3>
-                    <span className="text-xs text-slate-500 font-semibold bg-slate-100 px-3 py-1 rounded-full">
-                      Showing: {filteredLeaves.length} of {leaves.length}
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                          <th className="px-6 py-4">Employee</th>
-                          <th className="px-6 py-4">Leave Type</th>
-                          <th className="px-6 py-4">Dates & Duration</th>
-                          <th className="px-6 py-4">Reason</th>
-                          <th className="px-6 py-4">Status</th>
-                          <th className="px-6 py-4 text-right">Actions</th>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                        <th className="px-6 py-4">Employee</th>
+                        <th className="px-6 py-4">Leave Type</th>
+                        <th className="px-6 py-4">Dates & Duration</th>
+                        <th className="px-6 py-4">Reason</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150/80 text-sm">
+                      {filteredLeaves.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" className="text-center py-10 text-slate-400 font-medium">
+                            No leave applications match the selected filters.
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-150/80 text-sm">
-                        {filteredLeaves.length === 0 ? (
-                          <tr>
-                            <td colSpan="6" className="text-center py-10 text-slate-400 font-medium">
-                              No leave applications match the selected filters.
-                            </td>
-                          </tr>
-                        ) : (
-                          filteredLeaves.map((l) => {
-                            const emp = employees.find(
-                              (e) =>
-                                e.employeeId === l.employeeEID ||
-                                e.id === l.employeeEID ||
-                                e._id === l.employeeId
-                            );
-                            const startStr = new Date(l.startDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-                            const endStr = new Date(l.endDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-                            const datesFormatted = l.startDate === l.endDate ? startStr : `${startStr} – ${endStr}`;
-                            
-                            const diffDays = Math.ceil(Math.abs(new Date(l.endDate || l.startDate) - new Date(l.startDate)) / (1000 * 60 * 60 * 24)) + 1;
+                      ) : (
+                        filteredLeaves.map((l) => {
+                          const emp = employees.find(
+                            (e) =>
+                              e.employeeId === l.employeeEID ||
+                              e.id === l.employeeEID ||
+                              e._id === l.employeeId
+                          );
+                          const startStr = new Date(l.startDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+                          const endStr = new Date(l.endDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+                          const datesFormatted = l.startDate === l.endDate ? startStr : `${startStr} – ${endStr}`;
 
-                            return (
-                              <tr key={l._id} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shrink-0 overflow-hidden">
-                                      {emp?.profilePhoto ? (
-                                        <img src={emp.profilePhoto} alt={l.employeeName} className="w-full h-full object-cover" />
-                                      ) : (
-                                        (l.employeeName || 'E').charAt(0).toUpperCase()
-                                      )}
-                                    </div>
-                                    <div>
-                                      <div className="font-bold text-slate-900">{l.employeeName}</div>
-                                      <div className="text-xs text-slate-400 font-mono">{l.employeeEID} • {emp?.designation || 'Staff'}</div>
-                                    </div>
+                          const diffDays = Math.ceil(Math.abs(new Date(l.endDate || l.startDate) - new Date(l.startDate)) / (1000 * 60 * 60 * 24)) + 1;
+
+                          return (
+                            <tr key={l._id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shrink-0 overflow-hidden">
+                                    {emp?.profilePhoto ? (
+                                      <img src={emp.profilePhoto} alt={l.employeeName} className="w-full h-full object-cover" />
+                                    ) : (
+                                      (l.employeeName || 'E').charAt(0).toUpperCase()
+                                    )}
                                   </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-bold border ${
-                                    l.type === 'Casual Leave' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  <div>
+                                    <div className="font-bold text-slate-900">{l.employeeName}</div>
+                                    <div className="text-xs text-slate-400 font-mono">{l.employeeEID} • {emp?.designation || 'Staff'}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`inline-block px-2.5 py-1 rounded-md text-xs font-bold border ${l.type === 'Casual Leave' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                     l.type === 'Sick Leave' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                    'bg-blue-50 text-blue-700 border-blue-200'
+                                      'bg-blue-50 text-blue-700 border-blue-200'
                                   }`}>
-                                    {l.type}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="font-semibold text-slate-800">{datesFormatted}</div>
-                                  <span className="inline-block mt-0.5 text-[11px] font-extrabold text-[#588b12] bg-lime-50 px-2 py-0.5 rounded border border-lime-200">
-                                    {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-slate-600 font-medium max-w-[220px] truncate" title={l.reason}>
-                                  {l.reason || "—"}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
-                                    l.status === 'Approved' ? 'bg-lime-50 text-lime-700 border-lime-200' :
+                                  {l.type}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="font-semibold text-slate-800">{datesFormatted}</div>
+                                <span className="inline-block mt-0.5 text-[11px] font-extrabold text-[#588b12] bg-lime-50 px-2 py-0.5 rounded border border-lime-200">
+                                  {diffDays} {diffDays === 1 ? 'Day' : 'Days'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-slate-600 font-medium max-w-[220px] truncate" title={l.reason}>
+                                {l.reason || "—"}
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${l.status === 'Approved' ? 'bg-lime-50 text-lime-700 border-lime-200' :
                                     l.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                    'bg-amber-50 text-amber-700 border-amber-200'
+                                      'bg-amber-50 text-amber-700 border-amber-200'
                                   }`}>
-                                    <span className={`w-1.5 h-1.5 rounded-full ${
-                                      l.status === 'Approved' ? 'bg-lime-500' :
+                                  <span className={`w-1.5 h-1.5 rounded-full ${l.status === 'Approved' ? 'bg-lime-500' :
                                       l.status === 'Rejected' ? 'bg-rose-500' : 'bg-amber-500'
                                     }`} />
-                                    {l.status}
-                                  </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                    {l.status === "Pending HR" && (
-                                      <>
-                                        <button
-                                          onClick={() => handleUpdateLeaveStatus(l._id, "Approved")}
-                                          className="px-3 py-1.5 bg-[#588b12] hover:bg-[#4a750f] text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-all"
-                                        >
-                                          Approve
-                                        </button>
-                                        <button
-                                          onClick={() => handleUpdateLeaveStatus(l._id, "Rejected")}
-                                          className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-all"
-                                        >
-                                          Reject
-                                        </button>
-                                      </>
-                                    )}
-                                    {l.status === "Approved" && (
-                                      <button
-                                        onClick={() => handleUpdateLeaveStatus(l._id, "Rejected")}
-                                        className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 cursor-pointer"
-                                      >
-                                        Revoke
-                                      </button>
-                                    )}
-                                    {l.status === "Rejected" && (
+                                  {l.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  {l.status === "Pending HR" && (
+                                    <>
                                       <button
                                         onClick={() => handleUpdateLeaveStatus(l._id, "Approved")}
-                                        className="px-2.5 py-1 text-xs font-semibold text-[#588b12] hover:bg-lime-50 rounded-lg border border-lime-200 cursor-pointer"
+                                        className="px-3 py-1.5 bg-[#588b12] hover:bg-[#4a750f] text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-all"
                                       >
                                         Approve
                                       </button>
-                                    )}
+                                      <button
+                                        onClick={() => handleUpdateLeaveStatus(l._id, "Rejected")}
+                                        className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded-xl cursor-pointer shadow-sm transition-all"
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  )}
+                                  {l.status === "Approved" && (
                                     <button
-                                      onClick={() => handleDeleteLeave(l._id)}
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                      title="Delete Request"
+                                      onClick={() => handleUpdateLeaveStatus(l._id, "Rejected")}
+                                      className="px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 cursor-pointer"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      Revoke
                                     </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                                  )}
+                                  {l.status === "Rejected" && (
+                                    <button
+                                      onClick={() => handleUpdateLeaveStatus(l._id, "Approved")}
+                                      className="px-2.5 py-1 text-xs font-semibold text-[#588b12] hover:bg-lime-50 rounded-lg border border-lime-200 cursor-pointer"
+                                    >
+                                      Approve
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeleteLeave(l._id)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                    title="Delete Request"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
+              </div>
 
               {/* Admin Leave Application Modal (On Behalf) */}
               {isApplyingLeave && (

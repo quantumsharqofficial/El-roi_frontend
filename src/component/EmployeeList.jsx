@@ -17,7 +17,7 @@ const getWorkingDaysCount = (startDate, endDate) => {
 
   while (cur <= end) {
     const day = cur.getDay();
-    if (day !== 0 && day !== 6) {
+    if (day !== 0) {
       const monthStr = String(cur.getMonth() + 1).padStart(2, "0");
       const dateStr = String(cur.getDate()).padStart(2, "0");
       const mmdd = `${monthStr}-${dateStr}`;
@@ -155,8 +155,7 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
                         );
                       })() : emp.employeeType === "Notice Period" ? (() => {
                         const start = emp.noticeStartDate || new Date();
-                        const diffTime = Math.abs(new Date() - new Date(start));
-                        const completed = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+                        const completed = getWorkingDaysCount(new Date(start), new Date());
                         const remaining = Math.max(0, 30 - completed);
                         return (
                           <span className="inline-block mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md uppercase tracking-wider">

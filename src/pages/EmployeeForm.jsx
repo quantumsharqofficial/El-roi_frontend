@@ -689,8 +689,8 @@ export default function EmployeeForm({ mode = "add" }) {
                   <div className="flex items-center gap-3.5">
                     <div
                       className={`w-11 h-11 rounded-2xl flex items-center justify-center border shrink-0 ${hasFaceVector
-                          ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                          : "bg-amber-50 text-amber-600 border-amber-200"
+                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                        : "bg-amber-50 text-amber-600 border-amber-200"
                         }`}
                     >
                       <ScanFace className="w-5 h-5" />
@@ -921,20 +921,21 @@ export default function EmployeeForm({ mode = "add" }) {
                       >
                         <option value="">— Select Designation —</option>
                         <option value="Physiotherapist">Physiotherapist</option>
+                        <option value="Clinical Physiotherapist">Clinical Physiotherapist</option>
                         <option value="Senior Physiotherapist">Senior Physiotherapist</option>
-                        <option value="Junior Physiotherapist">Junior Physiotherapist</option>
-                        <option value="Sports Physiotherapist">Sports Physiotherapist</option>
-                        <option value="Neuro Physiotherapist">Neuro Physiotherapist</option>
-                        <option value="Pediatric Physiotherapist">Pediatric Physiotherapist</option>
-                        <option value="Occupational Therapist">Occupational Therapist</option>
-                        <option value="Clinic Manager">Clinic Manager</option>
-                        <option value="Front Desk / Receptionist">Front Desk / Receptionist</option>
-                        <option value="HR Manager">HR Manager</option>
-                        <option value="Admin">Admin</option>
-                        <option value="Accountant">Accountant</option>
-                        <option value="Nursing Staff">Nursing Staff</option>
-                        <option value="Intern / Trainee">Intern / Trainee</option>
-                        <option value="Other">Other</option>
+                        <option value="Senior Physiotherapist / Rehab Coordinator">
+                          Senior Physiotherapist / Rehab Coordinator
+                        </option>
+                        <option value="Physiotherapist / Rehab Coordinator">
+                          Physiotherapist / Rehab Coordinator
+                        </option>
+                        <option value="Physiotherapist / Clinical Incharge">
+                          Physiotherapist / Clinical Incharge
+                        </option>
+                        <option value="Chief Physiotherapist">Chief Physiotherapist</option>
+                        <option value="Clinic Pilot">Clinic Pilot</option>
+                        <option value="Front Desk Operator">Front Desk Operator</option>
+                        <option value="Auxiliary Staff">Auxiliary Staff</option>
                       </select>
                     </Field>
                     <Field label="Source of Hire">
@@ -1618,11 +1619,10 @@ export default function EmployeeForm({ mode = "add" }) {
                         <div key={idx} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-3">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-black text-slate-800 uppercase tracking-wider">{bal.leaveType}</span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              remaining > 0
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : "bg-rose-50 text-rose-700 border border-rose-200"
-                            }`}>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${remaining > 0
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-rose-50 text-rose-700 border border-rose-200"
+                              }`}>
                               {remaining} Days Left
                             </span>
                           </div>

@@ -508,12 +508,12 @@ export default function EmployeeAttendance({ employeeDetails }) {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+              {/* <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
                 <div className="text-[10px] font-bold uppercase text-slate-400">Today's Visits</div>
                 <div className="text-base font-bold text-[#588b12] mt-0.5">
                   {todayAllRecords.length} <span className="text-xs font-semibold text-slate-400">Session{todayAllRecords.length !== 1 ? 's' : ''}</span>
                 </div>
-              </div>
+              </div> */}
 
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
                 <div className="text-[10px] font-bold uppercase text-slate-400">Current Visit In</div>
@@ -578,7 +578,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
         </div>
 
         {/* Today's Sessions List */}
-        {todayAllRecords.length > 0 && (
+        {/* {todayAllRecords.length > 0 && (
           <div className="mt-6 border-t border-slate-100 pt-5">
             <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Today's Visit Sessions</h4>
             <div className="space-y-2">
@@ -627,7 +627,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
               })}
             </div>
           </div>
-        )}
+        )} */}
       </div>
 
       {/* ── Monthly Quick Metric Badges ───────────────────────────────────── */}

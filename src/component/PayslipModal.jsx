@@ -24,6 +24,8 @@ export default function PayslipModal({
   const printableRef = useRef(null);
 
   if (!selectedPayslip) return null;
+  console.log("sakt hi   ", employeeDetails?.bankDetails?.accountNumber
+  );
 
   // Extract date information
   const monthStr = selectedPayslip.month || new Date().toISOString().slice(0, 7);
@@ -87,8 +89,8 @@ export default function PayslipModal({
     selectedPayslip.absentDays !== undefined
       ? selectedPayslip.absentDays
       : unpaidLeaves > 0
-      ? unpaidLeaves
-      : Math.max(0, totalWorkingDays - actualWorkingDays);
+        ? unpaidLeaves
+        : Math.max(0, totalWorkingDays - actualWorkingDays);
   const lateDays = selectedPayslip.lateDays || 0;
   const paidDays =
     selectedPayslip.paidDays !== undefined
@@ -100,6 +102,10 @@ export default function PayslipModal({
   const homeRehabIncentives =
     Number(selectedPayslip.homeRehabIncentives) ||
     Number(selectedPayslip.incentives) ||
+    0;
+  const fuelAllowances =
+    Number(selectedPayslip.fuelAllowances) ||
+    Number(selectedPayslip.fuelAllowance) ||
     0;
   const otherIncentives =
     Number(selectedPayslip.otherIncentives) ||
@@ -128,6 +134,7 @@ export default function PayslipModal({
   const grossEarnings =
     basicSalary +
     homeRehabIncentives +
+    fuelAllowances +
     otherIncentives +
     sundayPostings +
     sundayHomeRehab +
@@ -149,10 +156,10 @@ export default function PayslipModal({
   const netPayInWords = numberToWordsIndian(netPay);
 
   // Bank Info
-  const bankName = employeeDetails?.bankDetails?.bankName || "Axis Bank";
+  const bankName = employeeDetails?.bankDetails?.bankName || "--";
   const rawAcc = employeeDetails?.bankDetails?.accountNumber;
-  const accountNumber = rawAcc ? maskAccountNumber(rawAcc) : "XXXX XXXX XXXX 827";
-  const ifscCode = employeeDetails?.bankDetails?.ifscCode || "UTIB0000801";
+  const accountNumber = rawAcc ? maskAccountNumber(rawAcc) : "--";
+  const ifscCode = employeeDetails?.bankDetails?.ifscCode || "--";
 
   // PDF Download Handler using html2pdf.js
   const handleDownloadPDF = async () => {
@@ -440,227 +447,107 @@ export default function PayslipModal({
               </div>
             </div>
 
-            {/* 4. Earnings & Deductions Tables (Two-column exact side-by-side grid) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 my-4">
-              {/* Left Column: Earnings */}
-              <div className="border border-slate-900 flex flex-col justify-between">
-                <div>
-                  <div className="bg-slate-100 border-b border-slate-900 py-1.5 text-center font-black text-xs tracking-wider uppercase text-slate-900">
-                    EARNINGS
-                  </div>
-                  <div className="grid grid-cols-[1fr_90px] border-b border-slate-900 font-bold text-[11px] px-2.5 py-1 bg-slate-50 text-slate-700">
-                    <span>Particulars</span>
-                    <span className="text-right">Amount</span>
-                  </div>
-
-                  <div className="divide-y divide-slate-200 text-xs">
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Basic Salary</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {basicSalary ? formatCurr(basicSalary) : "20,000.00"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Home Rehab Incentives</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {homeRehabIncentives ? formatCurr(homeRehabIncentives) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Other Incentives</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {otherIncentives ? formatCurr(otherIncentives) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Sunday Postings</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {sundayPostings ? formatCurr(sundayPostings) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Sunday Home Rehab</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {sundayHomeRehab ? formatCurr(sundayHomeRehab) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Other Payments</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {otherPayments ? formatCurr(otherPayments) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Overtime</span>
-                      <span className="text-right font-semibold text-slate-900 font-mono">
-                        {overtimePay ? formatCurr(overtimePay) : "-"}
-                      </span>
-                    </div>
-                  </div>
+            {/* 4. Earnings & Deductions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
+              {/* Earnings */}
+              <div className="border border-slate-800 flex flex-col">
+                <div className="bg-slate-100 border-b border-slate-800 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-900">EARNINGS</div>
+                <div className="grid grid-cols-[1fr_90px] px-3 py-1.5 bg-slate-50 border-b border-slate-300">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Particulars</span>
+                  <span className="text-right text-[10px] font-bold text-slate-600 uppercase tracking-wider">Amount</span>
                 </div>
-
-                <div className="grid grid-cols-[1fr_100px] border-t-2 border-slate-900 px-2.5 py-2 font-black text-xs bg-slate-50">
-                  <span className="uppercase tracking-wider text-slate-900">GROSS EARNINGS</span>
-                  <span className="text-right text-slate-900 font-mono text-sm">
-                    {formatCurr(grossEarnings)}
-                  </span>
+                <div className="flex-1 divide-y divide-slate-200 text-[11px]">
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Basic Salary</span><span className="text-right font-semibold font-mono text-slate-900">{basicSalary ? formatCurr(basicSalary) : "20,000.00"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Home Rehab incentives</span><span className="text-right font-semibold font-mono text-slate-900">{homeRehabIncentives ? formatCurr(homeRehabIncentives) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Fuel Allowances</span><span className="text-right font-semibold font-mono text-slate-900">{fuelAllowances ? formatCurr(fuelAllowances) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Other Incentives</span><span className="text-right font-semibold font-mono text-slate-900">{otherIncentives ? formatCurr(otherIncentives) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Sunday Postings</span><span className="text-right font-semibold font-mono text-slate-900">{sundayPostings ? formatCurr(sundayPostings) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Sunday Home Rehab</span><span className="text-right font-semibold font-mono text-slate-900">{sundayHomeRehab ? formatCurr(sundayHomeRehab) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">{overtimeHours > 0 ? `Overtime Incentive (${overtimeHours} hrs)` : "Overtime Incentive"}</span><span className="text-right font-semibold font-mono text-slate-900">{overtimePay ? formatCurr(overtimePay) : "-"}</span></div>
+                </div>
+                <div className="grid grid-cols-[1fr_90px] px-3 py-2 border-t-2 border-slate-800 bg-slate-100">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-900">Gross Earnings</span>
+                  <span className="text-right text-[12px] font-black font-mono text-slate-900">{formatCurr(grossEarnings)}</span>
                 </div>
               </div>
-
-              {/* Right Column: Deductions */}
-              <div className="border border-slate-900 flex flex-col justify-between">
-                <div>
-                  <div className="bg-slate-100 border-b border-slate-900 py-1.5 text-center font-black text-xs tracking-wider uppercase text-slate-900">
-                    DEDUCTIONS
-                  </div>
-                  <div className="grid grid-cols-[1fr_90px] border-b border-slate-900 font-bold text-[11px] px-2.5 py-1 bg-slate-50 text-slate-700">
-                    <span>Particulars</span>
-                    <span className="text-right">Amount</span>
-                  </div>
-
-                  <div className="divide-y divide-slate-200 text-xs">
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Leave Deductions</span>
-                      <span className="text-right font-semibold text-rose-700 font-mono">
-                        {leaveDeductions ? formatCurr(leaveDeductions) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Late Coming Deductions</span>
-                      <span className="text-right font-semibold text-rose-700 font-mono">
-                        {lateComingDeductions ? formatCurr(lateComingDeductions) : "-"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5">
-                      <span className="font-medium text-slate-800">Other Deductions</span>
-                      <span className="text-right font-semibold text-rose-700 font-mono">
-                        {otherDeductions ? formatCurr(otherDeductions) : "-"}
-                      </span>
-                    </div>
-                    {/* Empty placeholder rows to visually align height with earnings table */}
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5 opacity-0 select-none">
-                      <span>-</span>
-                      <span className="text-right">-</span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5 opacity-0 select-none">
-                      <span>-</span>
-                      <span className="text-right">-</span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5 opacity-0 select-none">
-                      <span>-</span>
-                      <span className="text-right">-</span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_90px] px-2.5 py-1.5 opacity-0 select-none">
-                      <span>-</span>
-                      <span className="text-right">-</span>
-                    </div>
-                  </div>
+              {/* Deductions */}
+              <div className="border border-slate-800 flex flex-col">
+                <div className="bg-slate-100 border-b border-slate-800 py-1.5 text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-900">DEDUCTIONS</div>
+                <div className="grid grid-cols-[1fr_90px] px-3 py-1.5 bg-slate-50 border-b border-slate-300">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Particulars</span>
+                  <span className="text-right text-[10px] font-bold text-slate-600 uppercase tracking-wider">Amount</span>
                 </div>
-
-                <div className="grid grid-cols-[1fr_100px] border-t-2 border-slate-900 px-2.5 py-2 font-black text-xs bg-slate-50">
-                  <span className="uppercase tracking-wider text-slate-900">TOTAL DEDUCTIONS</span>
-                  <span className="text-right text-rose-700 font-mono text-sm">
-                    {formatCurr(totalDeductions)}
-                  </span>
+                <div className="flex-1 divide-y divide-slate-200 text-[11px]">
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Leave Deductions</span><span className="text-right font-semibold font-mono text-rose-700">{leaveDeductions ? formatCurr(leaveDeductions) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Late Coming Deductions</span><span className="text-right font-semibold font-mono text-rose-700">{lateComingDeductions ? formatCurr(lateComingDeductions) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px]"><span className="font-medium text-slate-700">Other Deductions</span><span className="text-right font-semibold font-mono text-rose-700">{otherDeductions ? formatCurr(otherDeductions) : "-"}</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px] opacity-0 select-none"><span>-</span><span>-</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px] opacity-0 select-none"><span>-</span><span>-</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px] opacity-0 select-none"><span>-</span><span>-</span></div>
+                  <div className="grid grid-cols-[1fr_90px] px-3 py-[7px] opacity-0 select-none"><span>-</span><span>-</span></div>
+                </div>
+                <div className="grid grid-cols-[1fr_90px] px-3 py-2 border-t-2 border-slate-800 bg-slate-100">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-900">Total Deductions</span>
+                  <span className="text-right text-[12px] font-black font-mono text-rose-700">{formatCurr(totalDeductions)}</span>
                 </div>
               </div>
             </div>
 
-            {/* 5. Net Pay & Words Banner */}
-            <div className="my-5 p-3.5 border-2 border-slate-900 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            {/* 5. NET PAY */}
+            <div className="my-4 border-2 border-slate-800 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-5 py-3">
               <div className="flex items-baseline gap-3">
-                <span className="font-black text-sm tracking-wider uppercase text-slate-900">
-                  NET PAY
-                </span>
-                <span className="text-xl md:text-2xl font-black text-slate-900 font-mono">
-                  ₹{Number(netPay).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-800">NET PAY</span>
+                <span className="text-2xl font-black text-slate-900 font-mono">
+                  &#8377;{Number(netPay).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
-              <div className="text-xs font-bold text-slate-700 italic">
-                {netPayInWords}
+              <div className="text-[11px] font-semibold text-slate-600 italic sm:text-right">({netPayInWords})</div>
+            </div>
+
+            {/* 6. PAYMENT DETAILS */}
+            <div className="border-t border-slate-300 pt-4 pb-4 mx-0">
+              <h4 className="text-center text-[10px] font-black uppercase tracking-[0.18em] text-slate-800 mb-3">PAYMENT DETAILS</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-2 text-[11.5px] px-2">
+                <div className="space-y-2">
+                  <div className="flex"><span className="w-32 font-bold text-slate-600 shrink-0">Bank Name</span><span className="font-semibold text-slate-900">&nbsp;:&nbsp;{bankName}</span></div>
+                  <div className="flex"><span className="w-32 font-bold text-slate-600 shrink-0">Account No</span><span className="font-semibold text-slate-900 font-mono">&nbsp;:&nbsp;{accountNumber}</span></div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex"><span className="w-32 font-bold text-slate-600 shrink-0">IFSC Code</span><span className="font-semibold text-slate-900 font-mono">&nbsp;:&nbsp;{ifscCode}</span></div>
+                  <div className="flex"><span className="w-32 font-bold text-slate-600 shrink-0">Payment Date</span><span className="font-semibold text-slate-900">&nbsp;:&nbsp;{paymentDateFormatted}</span></div>
+                </div>
               </div>
             </div>
 
-            {/* 6. Payment Details & Official Clinic Stamp */}
-       
+            {/* 7. SIGNATURES */}
+            <div className="border-t border-slate-300 pt-6 pb-5">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-700">Prepared By</span>
+                  <div className="h-10 flex items-end justify-center w-full">
 
-            {/* 7. Signatures / Approvals (Three Column Layout) */}
-            {/* <div className="grid grid-cols-3 gap-4 pt-10 pb-4 text-center">
-         
-              <div className="space-y-1">
-                <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 block">
-                  PREPARED BY
-                </span>
-           
-                <div className="h-10 flex items-center justify-center">
-                  <svg
-                    className="w-24 h-8 text-blue-950"
-                    viewBox="0 0 120 40"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  >
-                    <path d="M10,25 C25,10 35,35 45,20 C55,10 65,30 85,15 C95,10 100,28 110,22" />
-                    <path d="M20,32 L95,30" strokeWidth="1" opacity="0.6" />
-                  </svg>
+                  </div>
+                  <div className="border-t border-slate-700 w-full pt-1 text-[9px] font-bold text-slate-700 uppercase tracking-wider">Clinical In-Charge</div>
                 </div>
-                <div className="border-t border-slate-700 pt-1 text-[10px] font-bold text-slate-700 uppercase">
-                  CLINICAL IN-CHARGE
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-700">Approved By</span>
+                  <div className="h-10 flex items-end justify-center w-full">
+
+                  </div>
+                  <div className="border-t border-slate-700 w-full pt-1 text-[9px] font-bold text-slate-700 uppercase tracking-wider">Managing Director</div>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-700">Received By</span>
+                  <div className="h-10 flex items-end justify-center w-full">
+
+                  </div>
+                  <div className="border-t border-slate-700 w-full pt-1 text-[9px] font-bold text-slate-900 truncate">{employeeName}</div>
                 </div>
               </div>
+            </div>
 
-          
-              <div className="space-y-1">
-                <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 block">
-                  APPROVED BY
-                </span>
-              
-                <div className="h-10 flex items-center justify-center">
-                  <svg
-                    className="w-28 h-8 text-blue-950"
-                    viewBox="0 0 140 40"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  >
-                    <path d="M15,28 L35,12 L50,30 L65,18 L85,25 L105,15 L125,24" />
-                    <path d="M30,34 L120,32" strokeWidth="1" opacity="0.6" />
-                  </svg>
-                </div>
-                <div className="border-t border-slate-700 pt-1 text-[10px] font-bold text-slate-700 uppercase">
-                  MANAGING DIRECTOR
-                </div>
-              </div>
-
-         
-              <div className="space-y-1">
-                <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 block">
-                  RECEIVED BY
-                </span>
-             
-                <div className="h-10 flex items-center justify-center">
-                  <svg
-                    className="w-24 h-8 text-blue-950"
-                    viewBox="0 0 120 40"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  >
-                    <path d="M15,22 C30,12 40,28 55,18 C70,12 85,24 105,18" />
-                    <path d="M25,32 L95,31" strokeWidth="1" opacity="0.6" />
-                  </svg> 
-                </div>
-                <div className="border-t border-slate-700 pt-1 text-[10px] font-bold text-slate-900 truncate">
-                  {employeeName}
-                </div>
-              </div>
-            </div> */}
-
-            {/* 8. Verified Footer Note */}
-            <div className="border-t border-slate-200 mt-6 pt-3 text-center text-[10px] text-slate-400 font-medium">
+            {/* 8. FOOTER */}
+            <div className="border-t border-slate-200 pt-3 pb-4 text-center text-[9.5px] text-slate-400 font-medium">
               This document is a computer-generated salary slip officially issued by Elroi Physio Care &amp; Rehabilitation Centre.
             </div>
           </div>

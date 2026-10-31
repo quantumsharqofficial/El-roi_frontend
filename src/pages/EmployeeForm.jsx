@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   ChevronRight,
   User,
@@ -19,6 +19,7 @@ import {
   AlertCircle,
   X,
   Calendar,
+  Clock,
   ScanFace,
   RefreshCw,
 } from "lucide-react";
@@ -27,6 +28,240 @@ import { toast } from "sonner";
 import Sidebar from "../layouts/Sidebar";
 import Navbar from "../layouts/Navbar";
 import AxiosInstance from "../utilities/AxiosInstance";
+
+export const DAYS_OF_WEEK = [
+  { key: "sundayShift", label: "Sunday", dayType: "Weekend" },
+  { key: "mondayShift", label: "Monday", dayType: "Weekday" },
+  { key: "tuesdayShift", label: "Tuesday", dayType: "Weekday" },
+  { key: "wednesdayShift", label: "Wednesday", dayType: "Weekday" },
+  { key: "thursdayShift", label: "Thursday", dayType: "Weekday" },
+  { key: "fridayShift", label: "Friday", dayType: "Weekday" },
+  { key: "saturdayShift", label: "Saturday", dayType: "Weekend" },
+];
+
+export const DEFAULT_SHIFTS = [
+  {
+    shiftName: "S1",
+    shiftTime: "10 am - 2 pm & 4 pm - 8 pm",
+    firstinTime: "10:00",
+    firstoutTime: "14:00",
+    firstworkhour: 4,
+    secondworkhour: 4,
+    secondinTime: "16:00",
+    secondoutTime: "20:00",
+    workingHours: 8
+  },
+  {
+    shiftName: "S2",
+    shiftTime: "8 am - 2 pm & 3 pm - 5 pm",
+    firstinTime: "08:00",
+    firstoutTime: "14:00",
+    firstworkhour: 6,
+    secondworkhour: 2,
+    secondinTime: "15:00",
+    secondoutTime: "17:00",
+    workingHours: 8
+  },
+  {
+    shiftName: "S3",
+    shiftTime: "7 PM - 10 PM",
+    firstinTime: "19:00",
+    firstoutTime: "22:00",
+    firstworkhour: 3,
+    secondworkhour: 0,
+    secondinTime: "--",
+    secondoutTime: "--",
+    workingHours: 3,
+  },
+  {
+    shiftName: "S4",
+    shiftTime: "9 am - 2 pm",
+    firstinTime: "09:00",
+    firstoutTime: "14:00",
+    firstworkhour: 5,
+    secondworkhour: 0,
+    secondinTime: "--",
+    secondoutTime: "--",
+    workingHours: 5,
+  },
+  {
+    shiftName: "S5",
+    shiftTime: "11:30 am - 1:30 pm & 4:30 pm - 8:30 pm",
+    firstinTime: "11:30",
+    firstoutTime: "13:30",
+    firstworkhour: 2,
+    secondworkhour: 4,
+    secondinTime: "16:30",
+    secondoutTime: "20:30",
+    workingHours: 6,
+  },
+  {
+    shiftName: "S6",
+    shiftTime: "10 am - 2 pm & 4 pm - 9 pm",
+    firstinTime: "10:00",
+    firstoutTime: "14:00",
+    firstworkhour: 4,
+    secondworkhour: 5,
+    secondinTime: "16:00",
+    secondoutTime: "21:00",
+    workingHours: 9,
+  },
+  {
+    shiftName: "S7",
+    shiftTime: "9 am - 2 pm & 4 pm - 7 pm",
+    firstinTime: "09:00",
+    firstoutTime: "14:00",
+    firstworkhour: 5,
+    secondworkhour: 3,
+    secondinTime: "16:00",
+    secondoutTime: "19:00",
+    workingHours: 8,
+  },
+  {
+
+    shiftName: "S8",
+    shiftTime: "8:30 am - 2 pm & 4 pm - 6:30 pm",
+    firstinTime: "08:30",
+    firstoutTime: "14:00",
+    firstworkhour: 5.5,
+    secondworkhour: 2.5,
+    secondinTime: "16:00",
+    secondoutTime: "18:30",
+    workingHours: 8,
+  },
+  {
+    shiftName: "S9",
+    shiftTime: "9 am - 2 pm & 4 pm - 7 pm",
+    firstinTime: "09:00",
+    firstoutTime: "14:00",
+    firstworkhour: 5,
+    secondworkhour: 3,
+    secondinTime: "16:00",
+    secondoutTime: "19:00",
+    workingHours: 8,
+  },
+  {
+    shiftName: "S10",
+    shiftTime: "11 am - 2 pm & 5 pm - 9 pm",
+    firstinTime: "11:00",
+    firstoutTime: "14:00",
+    firstworkhour: 3,
+    secondworkhour: 4,
+    secondinTime: "17:00",
+    secondoutTime: "21:00",
+    workingHours: 7,
+  },
+  {
+    shiftName: "S11",
+    shiftTime: "10 am - 2 pm & 4 pm - 8 pm",
+    firstinTime: "10:00",
+    firstoutTime: "14:00",
+    firstworkhour: 4,
+    secondworkhour: 4,
+    secondinTime: "16:00",
+    secondoutTime: "20:00",
+    workingHours: 8,
+  },
+  {
+    shiftName: "S12",
+    shiftTime: "5 pm - 9 pm",
+    firstinTime: "17:00",
+    firstoutTime: "21:00",
+    firstworkhour: 4,
+    secondworkhour: 0,
+    secondinTime: "--",
+    secondoutTime: "--",
+    workingHours: 4,
+  },
+  {
+    shiftName: "S13",
+    shiftTime: "9:30 am - 1:30 pm & 4 pm - 8 pm",
+    firstinTime: "09:30",
+    firstoutTime: "13:30",
+    firstworkhour: 4,
+    secondworkhour: 4,
+    secondinTime: "16:00",
+    secondoutTime: "20:00",
+    workingHours: 8,
+  },
+  {
+    shiftName: "S14",
+    shiftTime: "9:30 am - 1:30 pm & 4 pm - 6 pm",
+    firstinTime: "09:30",
+    firstoutTime: "13:30",
+    firstworkhour: 4,
+    secondworkhour: 2,
+    secondinTime: "16:00",
+    secondoutTime: "18:00",
+    workingHours: 6,
+  },
+  {
+    shiftName: "S15",
+    shiftTime: "6:30 pm - 8:30 pm",
+    firstinTime: "18:30",
+    firstoutTime: "20:30",
+    firstworkhour: 2,
+    secondworkhour: 0,
+    secondinTime: "--",
+    secondoutTime: "--",
+    workingHours: 2,
+  },
+  {
+    shiftName: "S16",
+    shiftTime: "8:30 am - 10 pm",
+    firstinTime: "08:30",
+    firstoutTime: "22:00",
+    firstworkhour: 13.5,
+    secondworkhour: 0,
+    secondinTime: "--",
+    secondoutTime: "--",
+    workingHours: 13.5,
+  },
+  {
+    shiftName: "S17",
+    shiftTime: "8 am - 1 pm",
+    firstinTime: "08:00",
+    firstoutTime: "13:00",
+    firstworkhour: 5,
+    secondworkhour: 0,
+    secondinTime: "--",
+    secondoutTime: "--",
+    workingHours: 5,
+  },
+  {
+    shiftName: "leave",
+    shiftTime: "--",
+    firstinTime: "N/A",
+    firstoutTime: "N/A",
+    firstworkhour: 0,
+    secondworkhour: 0,
+    secondinTime: "N/A",
+    secondoutTime: "N/A",
+    workingHours: 0,
+  },
+];
+
+export const getShiftObject = (value, list = DEFAULT_SHIFTS) => {
+  if (!value) return null;
+  if (typeof value === "object" && value !== null) return value;
+  if (typeof value === "string") {
+    const found = list.find(
+      (s) => s.shiftName?.toLowerCase() === value.toLowerCase()
+    );
+    return (
+      found || {
+        shiftName: value,
+        shiftTime: "--",
+        firstinTime: "--",
+        firstoutTime: "--",
+        secondinTime: "--",
+        secondoutTime: "--",
+        workingHours: "0",
+      }
+    );
+  }
+  return null;
+};
 
 const calculateAge = (dobString) => {
   if (!dobString) return "";
@@ -84,6 +319,7 @@ const SELECT =
 export default function EmployeeForm({ mode = "add" }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Employees");
   const [photoPreview, setPhotoPreview] = useState(null);
@@ -92,7 +328,62 @@ export default function EmployeeForm({ mode = "add" }) {
   const [isLoading, setIsLoading] = useState(mode !== "add");
   const [showDeleteFaceModal, setShowDeleteFaceModal] = useState(false);
   const [isDeletingVector, setIsDeletingVector] = useState(false);
+  const [shiftList, setShiftList] = useState(DEFAULT_SHIFTS);
   const fileInputRef = useRef(null);
+
+  // Fetch available shifts from backend API with fallback
+  useEffect(() => {
+    const fetchShifts = async () => {
+      try {
+        const res = await AxiosInstance.get("/shifts");
+        console.log(res);
+
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setShiftList(res.data);
+        } else if (res.data && typeof res.data === "object") {
+          const list = Object.keys(res.data).map((k) => ({
+            shiftName: res.data[k].shiftName || res.data[k].code || k.toUpperCase(),
+            shiftTime: res.data[k].shiftTime || res.data[k].name,
+            workingHours: res.data[k].workingHours || "",
+          }));
+          setShiftList(list);
+        }
+      } catch (error) {
+        console.warn("Could not fetch shifts from API, using default list", error);
+      }
+    }
+    fetchShifts();
+  }, []);
+
+  const handleApplyShiftToAll = (selectedShiftCode) => {
+    if (!selectedShiftCode) return;
+    const shiftObj = getShiftObject(selectedShiftCode, shiftList);
+    setForm((prev) => ({
+      ...prev,
+      sundayShift: shiftObj,
+      mondayShift: shiftObj,
+      tuesdayShift: shiftObj,
+      wednesdayShift: shiftObj,
+      thursdayShift: shiftObj,
+      fridayShift: shiftObj,
+      saturdayShift: shiftObj,
+    }));
+    toast.info(`Applied ${selectedShiftCode} to all 7 days`);
+  };
+
+  const handleApplyShiftToWeekdays = (selectedShiftCode) => {
+    if (!selectedShiftCode) return;
+    const shiftObj = getShiftObject(selectedShiftCode, shiftList);
+    setForm((prev) => ({
+      ...prev,
+      mondayShift: shiftObj,
+      tuesdayShift: shiftObj,
+      wednesdayShift: shiftObj,
+      thursdayShift: shiftObj,
+      fridayShift: shiftObj,
+    }));
+    toast.info(`Applied ${selectedShiftCode} to Monday - Friday`);
+  };
 
   /* ── Form State ── */
   const [form, setForm] = useState({
@@ -123,8 +414,15 @@ export default function EmployeeForm({ mode = "add" }) {
     status: "Active",
     emergencyContact: "",
     emergencyNumber: "",
-    checkInTime: "",
-    checkOutTime: "",
+    checkInTime: "09:00",
+    checkOutTime: "17:00",
+    sundayShift: null,
+    mondayShift: null,
+    tuesdayShift: null,
+    wednesdayShift: null,
+    thursdayShift: null,
+    fridayShift: null,
+    saturdayShift: null,
     presentAddress: "",
     permanentAddress: "",
     city: "",
@@ -311,6 +609,13 @@ export default function EmployeeForm({ mode = "add" }) {
             emergencyNumber: data.emergencyNumber || "",
             checkInTime: data.checkInTime || "09:00",
             checkOutTime: data.checkOutTime || "17:00",
+            sundayShift: getShiftObject(data.sundayShift, shiftList),
+            mondayShift: getShiftObject(data.mondayShift, shiftList),
+            tuesdayShift: getShiftObject(data.tuesdayShift, shiftList),
+            wednesdayShift: getShiftObject(data.wednesdayShift, shiftList),
+            thursdayShift: getShiftObject(data.thursdayShift, shiftList),
+            fridayShift: getShiftObject(data.fridayShift, shiftList),
+            saturdayShift: getShiftObject(data.saturdayShift, shiftList),
             presentAddress: data.presentAddress || "",
             permanentAddress: data.permanentAddress || "",
             city: data.city || "",
@@ -410,6 +715,13 @@ export default function EmployeeForm({ mode = "add" }) {
       emergencyNumber: "",
       checkInTime: "09:00",
       checkOutTime: "17:00",
+      sundayShift: null,
+      mondayShift: null,
+      tuesdayShift: null,
+      wednesdayShift: null,
+      thursdayShift: null,
+      fridayShift: null,
+      saturdayShift: null,
       presentAddress: "",
       permanentAddress: "",
       city: "",
@@ -515,8 +827,15 @@ export default function EmployeeForm({ mode = "add" }) {
       status: form.status,
       emergencyContact: form.emergencyContact,
       emergencyNumber: form.emergencyNumber,
-      checkInTime: form.checkInTime,
-      checkOutTime: form.checkOutTime,
+      checkInTime: form.checkInTime || "09:00",
+      checkOutTime: form.checkOutTime || "17:00",
+      sundayShift: form.sundayShift || null,
+      mondayShift: form.mondayShift || null,
+      tuesdayShift: form.tuesdayShift || null,
+      wednesdayShift: form.wednesdayShift || null,
+      thursdayShift: form.thursdayShift || null,
+      fridayShift: form.fridayShift || null,
+      saturdayShift: form.saturdayShift || null,
       presentAddress: form.presentAddress,
       permanentAddress: form.permanentAddress,
       certifications: form.certifications,
@@ -1096,25 +1415,141 @@ export default function EmployeeForm({ mode = "add" }) {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
-                    <Field label="Daily Check-In Time" required>
-                      <input
-                        type="time"
-                        required
-                        value={form.checkInTime}
-                        onChange={(e) => set("checkInTime", e.target.value)}
-                        className={INPUT}
-                      />
-                    </Field>
-                    <Field label="Daily Check-Out Time" required>
-                      <input
-                        type="time"
-                        required
-                        value={form.checkOutTime}
-                        onChange={(e) => set("checkOutTime", e.target.value)}
-                        className={INPUT}
-                      />
-                    </Field>
+                  {/* Shift Schedule Box */}
+                  <div className="pt-2">
+                    <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-5 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-8 h-8 rounded-lg bg-[#588b12]/15 text-[#588b12] flex items-center justify-center font-bold text-sm">
+                            <Clock className="w-4 h-4" />
+                          </span>
+                          <div>
+                            <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">
+                              Shift
+                            </h4>
+                            <p className="text-xs text-slate-500">
+                              Assign shift timings for Sunday through Saturday
+                            </p>
+                          </div>
+                        </div>
+
+                        {mode !== "view" && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleApplyShiftToWeekdays(e.target.value);
+                                  e.target.value = "";
+                                }
+                              }}
+                              className="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 hover:border-[#588b12] focus:outline-none transition-colors cursor-pointer"
+                            >
+                              <option value="" disabled>⚡ Fill Mon - Fri</option>
+                              {shiftList.map((s) => (
+                                <option key={`quick-mon-${s.shiftName}`} value={s.shiftName}>
+                                  {s.shiftName} ({s.shiftTime})
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleApplyShiftToAll(e.target.value);
+                                  e.target.value = "";
+                                }
+                              }}
+                              className="text-xs font-semibold bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 hover:border-[#588b12] focus:outline-none transition-colors cursor-pointer"
+                            >
+                              <option value="" disabled>⚡ Fill All 7 Days</option>
+                              {shiftList.map((s) => (
+                                <option key={`quick-all-${s.shiftName}`} value={s.shiftName}>
+                                  {s.shiftName} ({s.shiftTime})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 7 Days Grid: Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        {DAYS_OF_WEEK.map((day) => {
+                          const currentShiftObj = form[day.key];
+                          const currentShiftName =
+                            currentShiftObj && typeof currentShiftObj === "object"
+                              ? currentShiftObj.shiftName || ""
+                              : typeof currentShiftObj === "string"
+                                ? currentShiftObj
+                                : "";
+
+                          const matchedShift =
+                            currentShiftObj && typeof currentShiftObj === "object" && currentShiftObj.shiftTime
+                              ? currentShiftObj
+                              : shiftList.find(
+                                (s) =>
+                                  s.shiftName?.toLowerCase() ===
+                                  currentShiftName.toLowerCase()
+                              );
+
+                          return (
+                            <div
+                              key={day.key}
+                              className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs space-y-2 hover:border-[#588b12]/40 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span
+                                    className={`w-2 h-2 rounded-full ${day.dayType === "Weekend"
+                                      ? "bg-amber-400"
+                                      : "bg-[#588b12]"
+                                      }`}
+                                  />
+                                  {day.label}
+                                </label>
+                                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                                  {day.dayType}
+                                </span>
+                              </div>
+
+                              <select
+                                disabled={mode === "view"}
+                                value={currentShiftName}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (!val) {
+                                    set(day.key, null);
+                                  } else {
+                                    const selectedObj = getShiftObject(val, shiftList);
+                                    set(day.key, selectedObj);
+                                  }
+                                }}
+                                className={SELECT}
+                              >
+                                <option value="">-- Select Shift --</option>
+                                {shiftList.map((s) => (
+                                  <option key={`${day.key}-${s.shiftName}`} value={s.shiftName}>
+                                    {s.shiftName} {s.shiftTime !== "--" ? `(${s.shiftTime})` : "(Leave / Off)"}
+                                  </option>
+                                ))}
+                              </select>
+
+                              {matchedShift && (
+                                <div className="text-[11px] font-medium text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1 flex items-center justify-between">
+                                  <span className="truncate">{matchedShift.shiftTime}</span>
+                                  {matchedShift.workingHours && matchedShift.workingHours !== "0" && (
+                                    <span className="shrink-0 font-bold text-[#588b12] ml-1">
+                                      {matchedShift.workingHours}h
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </Section>

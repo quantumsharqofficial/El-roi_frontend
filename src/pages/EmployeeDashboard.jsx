@@ -23,6 +23,7 @@ import ApplyLeaveModal from "../component/ApplyLeaveModal";
 import Payslips from "../component/Payslips";
 import PayslipModal from "../component/PayslipModal";
 import EmployeeAttendance from "../component/EmployeeAttendance";
+import EmployeeHomeVisit from "../component/EmployeeHomeVisit";
 import EmployeeOverview from "../component/EmployeeOverview";
 
 export default function EmployeeDashboard() {
@@ -203,6 +204,11 @@ export default function EmployeeDashboard() {
           {/* Active Tab: Attendance */}
           {activeTab === "Attendance" && (
             <EmployeeAttendance employeeDetails={employeeDetails} />
+          )}
+
+          {/* Active Tab: Home Visit */}
+          {activeTab === "Home Visit" && (
+            <EmployeeHomeVisit employeeDetails={employeeDetails} />
           )}
 
           {/* Active Tab: Employee Profile Details */}

@@ -82,6 +82,37 @@ export const getDurationMinutes = (checkIn, checkOut) => {
   }
 };
 
+// Calculate duration between two time strings like admin panel
+export const calculateHours = (checkIn, checkOut) => {
+  if (!checkIn || !checkOut || checkIn === "N/A" || checkOut === "N/A" || checkOut === "Present") return "N/A";
+  const parseTime = (timeStr) => {
+    const match = timeStr.match(/^(\d+):(\d+)\s*(AM|PM)?$/i);
+    if (!match) {
+      const parts = timeStr.split(":").map(Number);
+      return parts[0] * 60 + (parts[1] || 0);
+    }
+    let [_, hrs, mins, meridiem] = match;
+    hrs = Number(hrs);
+    mins = Number(mins);
+    if (meridiem) {
+      if (meridiem.toUpperCase() === "PM" && hrs !== 12) hrs += 12;
+      if (meridiem.toUpperCase() === "AM" && hrs === 12) hrs = 0;
+    }
+    return hrs * 60 + mins;
+  };
+  try {
+    const startMins = parseTime(checkIn);
+    const endMins = parseTime(checkOut);
+    let diff = endMins - startMins;
+    if (diff < 0) diff += 24 * 60;
+    const h = Math.floor(diff / 60);
+    const m = diff % 60;
+    return `${h}h ${m.toString().padStart(2, "0")}m`;
+  } catch (e) {
+    return "N/A";
+  }
+};
+
 // Format minutes to "Xh Ym"
 export const formatMinutesToDuration = (minutes) => {
   if (!minutes || minutes <= 0) return "0h 00m";
@@ -127,16 +158,16 @@ export const formatToISTDateString = (dateInput) => {
 };
 
 export default function EmployeeAttendance({ employeeDetails }) {
-  const employeeId = employeeDetails?.employeeId || employeeDetails?.id;
+  const employeeId = employeeDetails?.employeeId || employeeDetails?.id || employeeDetails?._id;
   const employeeName = [employeeDetails?.firstName, employeeDetails?.lastName].filter(Boolean).join(" ") || "Employee";
 
-  const [activeSubTab, setActiveSubTab] = useState("monthly"); // Default to monthly view as requested
+  // Mode state: 'daily' | 'monthly' - default to daily like admin panel
+  const [activeSubTab, setActiveSubTab] = useState("daily");
   const [currentTime, setCurrentTime] = useState("");
   const [currentDateString, setCurrentDateString] = useState("");
 
   // Today's attendance state
   const [todayAttendance, setTodayAttendance] = useState(null);
-  const [todayAllRecords, setTodayAllRecords] = useState([]);
   const [punchLoading, setPunchLoading] = useState(false);
 
   // History & logs
@@ -144,6 +175,10 @@ export default function EmployeeAttendance({ employeeDetails }) {
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+
+  // Pagination State for Daily Table
+  const [currentPage, setCurrentPage] = useState(1);
+  const [entriesPerPage, setEntriesPerPage] = useState(10);
 
   // Monthly summary
   const [selectedMonth, setSelectedMonth] = useState(() => getTodayISTDateString().slice(0, 7));
@@ -178,51 +213,39 @@ export default function EmployeeAttendance({ employeeDetails }) {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch Attendance Records for this employee
+  // Fetch Attendance Records using the new Attendance API (like Admin Panel)
   const fetchEmployeeRecords = useCallback(async () => {
     if (!employeeId) return;
     setLoadingRecords(true);
     try {
-      const res = await AxiosInstance.get(`/attendance/${employeeId}`);
-      const raw = Array.isArray(res.data) ? res.data : [];
+      const res = await AxiosInstance.get(`/new-attendance/findbyemployeeid/${employeeId}`);
+      const rawList = Array.isArray(res.data)
+        ? res.data
+        : (Array.isArray(res.data?.data) ? res.data.data : []);
 
       // Sort descending by date
-      const sorted = [...raw].sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+      const sorted = [...rawList].sort(
+        (a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+      );
       setAllRecords(sorted);
 
       // Check today's record (using IST date string)
       const todayStr = getTodayISTDateString();
-      const sortedDesc = [...raw].sort(
-        (a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date)
-      );
-
-      // All today's records (sorted ascending by createdAt so Visit 1 first)
-      const todayRecs = [...raw]
-        .filter((r) => formatToISTDateString(r.date || r.createdAt) === todayStr)
-        .sort((a, b) => new Date(a.createdAt || a.date) - new Date(b.createdAt || b.date));
-      setTodayAllRecords(todayRecs);
-
-      // Look for today's active check-in (checked in but not checked out)
-      const activeRec = sortedDesc.find((r) => {
+      const todayRec = sorted.find((r) => {
         const dStr = formatToISTDateString(r.date || r.createdAt);
-        const hasCheckIn = Boolean(r.checkInTime && r.checkInTime !== "--:--");
-        const noCheckOut =
-          !r.checkOutTime ||
-          r.checkOutTime === "--:--" ||
-          r.checkOutTime === "In Progress...";
-        return dStr === todayStr && hasCheckIn && noCheckOut;
+        return dStr === todayStr;
       });
-
-      const todayRec =
-        activeRec ||
-        sortedDesc.find((r) => {
-          const dStr = formatToISTDateString(r.date || r.createdAt);
-          return dStr === todayStr;
-        });
 
       setTodayAttendance(todayRec || null);
     } catch (err) {
-      console.error("Error fetching employee attendance:", err);
+      console.warn("New attendance API lookup error, falling back:", err?.message);
+      try {
+        const fallbackRes = await AxiosInstance.get(`/attendance/${employeeId}`);
+        const fallbackList = Array.isArray(fallbackRes.data) ? fallbackRes.data : [];
+        setAllRecords(fallbackList);
+      } catch (e) {
+        setAllRecords([]);
+      }
     } finally {
       setLoadingRecords(false);
     }
@@ -233,9 +256,16 @@ export default function EmployeeAttendance({ employeeDetails }) {
     if (!employeeId) return;
     setLoadingMonthly(true);
     try {
-      const res = await AxiosInstance.get(
-        `/attendance/monthly-summary?month=${selectedMonth}&employeeId=${employeeId}`
-      );
+      let res;
+      try {
+        res = await AxiosInstance.get(
+          `/new-attendance/monthly-summary?month=${selectedMonth}&employeeId=${employeeId}`
+        );
+      } catch (newApiErr) {
+        res = await AxiosInstance.get(
+          `/attendance/monthly-summary?month=${selectedMonth}&employeeId=${employeeId}`
+        );
+      }
       const summaries = res.data?.summaries || res.data?.summary || [];
       const mySummary =
         summaries.find(
@@ -265,117 +295,90 @@ export default function EmployeeAttendance({ employeeDetails }) {
     }
   }, [employeeId, selectedMonth, fetchMonthlySummary]);
 
-  // Handle Punch In (Check-in) — supports multiple visits per day
-  const handleCheckIn = async () => {
+  // Handle Punch In / Punch Out with new Attendance system
+  const handleNewCheckIn = async () => {
     if (!employeeId) {
       toast.error("Employee details not found.");
       return;
     }
     setPunchLoading(true);
     try {
-      const todayStr = getTodayISTDateString();
-      // Use /multi-attendance/mark which allows multiple check-ins per day
-      const res = await AxiosInstance.post("/multi-attendance/mark", {
+      const res = await AxiosInstance.post("/multi-attendance/test", {
         employee_ID: employeeId,
-        name: employeeName,
-        date: todayStr,
-        place: "Home Visit",
-        address: "Home Visit",
       });
-
-      const visitNum = todayAllRecords.length + 1;
-      toast.success(`Home Visit ${visitNum} started successfully!`);
-      if (res.data?.data) {
-        setTodayAttendance(res.data.data);
-      }
-      fetchEmployeeRecords();
-      fetchMonthlySummary();
-    } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || "Check-in failed.";
-      toast.error(msg);
+      toast.success(res.data?.message || "Check In recorded successfully!");
+      await fetchEmployeeRecords();
+      await fetchMonthlySummary();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to record check in");
     } finally {
       setPunchLoading(false);
     }
   };
 
-  // Handle Punch Out (Check-out)
-  const handleCheckOut = async () => {
+  const handleNewCheckOut = async () => {
     if (!employeeId) {
       toast.error("Employee details not found.");
       return;
     }
     setPunchLoading(true);
     try {
-      const todayStr = getTodayISTDateString();
-      const res = await AxiosInstance.patch("/attendance/check-out", {
+      const res = await AxiosInstance.post("/multi-attendance/test", {
         employee_ID: employeeId,
-        date: todayStr,
-        attendanceId: todayAttendance?._id,
       });
-
-      toast.success("Home visit checked out successfully!");
-      if (res.data?.attendance) {
-        setTodayAttendance(res.data.attendance);
-      }
-      fetchEmployeeRecords();
-      fetchMonthlySummary();
-    } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || "Check-out failed.";
-      toast.error(msg);
+      toast.success(res.data?.message || "Check Out recorded successfully!");
+      await fetchEmployeeRecords();
+      await fetchMonthlySummary();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to record check out");
     } finally {
       setPunchLoading(false);
     }
   };
 
-  // Determine punch card status — active record is the one without checkout
-  const isCheckedIn = Boolean(
-    todayAttendance?.checkInTime &&
-    todayAttendance?.checkInTime !== "--:--" &&
-    (!todayAttendance?.checkOutTime ||
-      todayAttendance?.checkOutTime === "--:--" ||
-      todayAttendance?.checkOutTime === "In Progress...")
-  );
-  const isCompleted = Boolean(
-    todayAttendance?.checkInTime &&
-    todayAttendance?.checkInTime !== "--:--" &&
-    todayAttendance?.checkOutTime &&
-    todayAttendance?.checkOutTime !== "--:--" &&
-    todayAttendance?.checkOutTime !== "In Progress..."
-  );
-  const notCheckedIn = todayAllRecords.length === 0;
-  // Allow new visit start if current session is completed (or no session yet)
-  const canStartNewVisit = !isCheckedIn;
-
-  // Process Daily Logs with IST display and daily OT
+  // Process Daily Logs from the new Attendance model (multi-session with firstIn, firstOut, secondIn, secondOut, workingHours)
   const processedLogs = useMemo(() => {
     return allRecords.map((r) => {
-      const checkInFormatted = formatToIST12Hour(r.checkInTime);
-      const checkOutFormatted = r.checkOutTime
+      const firstIn = formatToIST12Hour(r.firstinTime || r.checkInTime);
+      const firstOut = r.firstoutTime
+        ? formatToIST12Hour(r.firstoutTime)
+        : r.checkOutTime
         ? formatToIST12Hour(r.checkOutTime)
-        : r.status === "Checked In"
+        : r.firstinTime && !r.secondinTime
         ? "In Progress..."
         : "--:--";
 
-      const durationMins = getDurationMinutes(r.checkInTime, r.checkOutTime);
-      const durationFormatted =
-        r.checkInTime && r.checkOutTime
-          ? formatMinutesToDuration(durationMins)
-          : r.status === "Checked In"
-          ? "In Progress..."
-          : "N/A";
+      const secondIn = r.secondinTime ? formatToIST12Hour(r.secondinTime) : "--:--";
+      const secondOut = r.secondoutTime
+        ? formatToIST12Hour(r.secondoutTime)
+        : r.secondinTime
+        ? "In Progress..."
+        : "--:--";
 
-      // Daily OT: Standard shift = 8 hours (480 mins)
-      const otMins = Math.max(0, durationMins - 480);
-      const otFormatted = otMins > 0 ? formatMinutesToDuration(otMins) : "--";
+      let hoursDisplay = "N/A";
+      if (r.workingHours !== undefined && r.workingHours !== null) {
+        const wh = Number(r.workingHours);
+        if (!isNaN(wh)) {
+          hoursDisplay = `${wh} hrs`;
+        }
+      } else if (r.firstinTime && r.firstoutTime) {
+        hoursDisplay = calculateHours(firstIn, firstOut);
+      } else if (r.checkInTime && r.checkOutTime) {
+        hoursDisplay = calculateHours(r.checkInTime, r.checkOutTime);
+      } else if (r.firstinTime || r.secondinTime) {
+        hoursDisplay = "In Progress...";
+      }
 
       const dateObj = r.date || r.createdAt ? new Date(r.date || r.createdAt) : null;
       const dateDisplay = dateObj
-        ? dateObj.toLocaleDateString("en-GB", {
-            timeZone: "Asia/Kolkata",
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })
+        ? dateObj
+            .toLocaleDateString("en-GB", {
+              timeZone: "Asia/Kolkata",
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+            .replace(/ /g, "-")
         : "N/A";
       const dayDisplay = dateObj
         ? dateObj.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", weekday: "short" })
@@ -383,61 +386,52 @@ export default function EmployeeAttendance({ employeeDetails }) {
 
       return {
         ...r,
+        id: r.employee_ID || employeeId,
         dateDisplay,
         dayDisplay,
-        checkInFormatted,
-        checkOutFormatted,
-        durationFormatted,
-        durationMins,
-        otMins,
-        otFormatted,
-        isOvertime: otMins > 0,
+        firstIn,
+        firstOut,
+        secondIn,
+        secondOut,
+        firstworkingHours: r.firstworkingHours,
+        secondworkingHours: r.secondworkingHours,
+        hours: hoursDisplay,
+        workingHours:
+          r.workingHours !== undefined && r.workingHours !== null
+            ? r.workingHours
+            : ((r.firstworkingHours || 0) + (r.secondworkingHours || 0)),
+        status: r.status || "Present",
+        place: r.place || r.address || "",
       };
     });
-  }, [allRecords]);
+  }, [allRecords, employeeId]);
 
   // Filtered Logs
   const filteredLogs = useMemo(() => {
     return processedLogs.filter((log) => {
+      const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        searchQuery === "" ||
-        log.dateDisplay.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.dayDisplay.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (log.status && log.status.toLowerCase().includes(searchQuery.toLowerCase()));
+        q === "" ||
+        log.dateDisplay.toLowerCase().includes(q) ||
+        log.dayDisplay.toLowerCase().includes(q) ||
+        (log.status && log.status.toLowerCase().includes(q)) ||
+        (log.place && log.place.toLowerCase().includes(q));
 
       const matchesStatus =
         statusFilter === "All" ||
-        log.status === statusFilter ||
-        (statusFilter === "Overtime" && log.isOvertime);
+        (log.status && log.status.toLowerCase() === statusFilter.toLowerCase());
 
       return matchesSearch && matchesStatus;
     });
   }, [processedLogs, searchQuery, statusFilter]);
 
-  // Calculate quick summary metrics for current month from logs
-  const currentMonthMetrics = useMemo(() => {
-    const currentPrefix = getTodayISTDateString().slice(0, 7);
-    const monthLogs = processedLogs.filter((l) => {
-      if (!l.date) return false;
-      return new Date(l.date).toISOString().slice(0, 7) === currentPrefix;
-    });
-
-    const presentCount = monthLogs.filter((l) => l.status === "Present" || l.status === "Checked In").length;
-    let totalMinutes = 0;
-    let totalOtMins = 0;
-
-    monthLogs.forEach((l) => {
-      totalMinutes += l.durationMins || 0;
-      totalOtMins += l.otMins || 0;
-    });
-
-    return {
-      presentCount,
-      totalHours: formatMinutesToDuration(totalMinutes),
-      totalOt: formatMinutesToDuration(totalOtMins),
-      daysLogged: monthLogs.length,
-    };
-  }, [processedLogs]);
+  // Pagination Calculation
+  const totalEntries = filteredLogs.length;
+  const totalPages = Math.ceil(totalEntries / entriesPerPage) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+  const indexOfLastLog = activePage * entriesPerPage;
+  const indexOfFirstLog = indexOfLastLog - entriesPerPage;
+  const currentLogs = filteredLogs.slice(indexOfFirstLog, indexOfLastLog);
 
   return (
     <div className="space-y-6">
@@ -455,7 +449,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
             Attendance & Work Logs
           </h1>
           <p className="text-sm text-slate-300">
-            Real-time Indian Standard Time (IST) tracking & Daily Overtime records.
+            Real-time Indian Standard Time (IST) multi-session attendance logs.
           </p>
         </div>
 
@@ -479,205 +473,57 @@ export default function EmployeeAttendance({ employeeDetails }) {
       </div>
 
       {/* ── Today's Punch & Status Card ───────────────────────────────────── */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-6 md:p-8 shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          {/* Left: Punch Status Indicator */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                Today's Punch Status
-              </span>
-              {notCheckedIn && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                  Not Checked In
-                </span>
-              )}
-              {isCheckedIn && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Currently Checked In (Active)
-                </span>
-              )}
-              {isCompleted && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                  Shift Completed
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
-              {/* <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">Today's Visits</div>
-                <div className="text-base font-bold text-[#588b12] mt-0.5">
-                  {todayAllRecords.length} <span className="text-xs font-semibold text-slate-400">Session{todayAllRecords.length !== 1 ? 's' : ''}</span>
-                </div>
-              </div> */}
-
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">Current Visit In</div>
-                <div className="text-base font-bold text-slate-800 mt-0.5">
-                  {isCheckedIn && todayAttendance?.checkInTime ? formatToIST12Hour(todayAttendance.checkInTime) : "--:--"}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">Total Hours Today</div>
-                <div className="text-base font-bold text-slate-800 mt-0.5">
-                  {(() => {
-                    const totalMins = todayAllRecords.reduce((acc, r) => {
-                      return acc + getDurationMinutes(r.checkInTime, r.checkOutTime);
-                    }, 0);
-                    return totalMins > 0 ? formatMinutesToDuration(totalMins) : isCheckedIn ? "In Progress" : "0h 00m";
-                  })()}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
-                <div className="text-[10px] font-bold uppercase text-slate-400">Today's OT</div>
-                <div className="text-base font-bold text-[#588b12] mt-0.5">
-                  {(() => {
-                    const totalMins = todayAllRecords.reduce((acc, r) => acc + getDurationMinutes(r.checkInTime, r.checkOutTime), 0);
-                    const ot = Math.max(0, totalMins - 480);
-                    return ot > 0 ? formatMinutesToDuration(ot) : "0h 00m";
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Check-In & Check-Out Action Buttons */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-            <button
-              onClick={handleCheckIn}
-              disabled={punchLoading || isCheckedIn}
-              className={`flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl font-bold text-sm transition-all shadow-md ${
-                isCheckedIn
-                  ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                  : "bg-gradient-to-r from-[#588b12] to-[#76b81d] text-white hover:opacity-95 hover:shadow-lg active:scale-95"
-              }`}
-            >
-              <LogIn className="w-4 h-4" />
-              {punchLoading ? "Processing..." : todayAllRecords.length > 0 && canStartNewVisit ? `Start Visit ${todayAllRecords.length + 1}` : "Home Visit Start"}
-            </button>
-
-            <button
-              onClick={handleCheckOut}
-              disabled={punchLoading || !isCheckedIn}
-              className={`flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl font-bold text-sm transition-all shadow-md ${
-                !isCheckedIn
-                  ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                  : "bg-red-600 hover:bg-red-700 text-white hover:shadow-lg active:scale-95"
-              }`}
-            >
-              <LogOut className="w-4 h-4" />
-              {punchLoading ? "Processing..." : "Home Visit End"}
-            </button>
-          </div>
-        </div>
-
-        {/* Today's Sessions List */}
-        {/* {todayAllRecords.length > 0 && (
-          <div className="mt-6 border-t border-slate-100 pt-5">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">Today's Visit Sessions</h4>
-            <div className="space-y-2">
-              {todayAllRecords.map((rec, idx) => {
-                const isActive = Boolean(
-                  rec.checkInTime && (!rec.checkOutTime || rec.checkOutTime === "--:--" || rec.checkOutTime === "In Progress...")
-                );
-                const dur = rec.checkInTime && rec.checkOutTime && rec.checkOutTime !== "--:--"
-                  ? formatMinutesToDuration(getDurationMinutes(rec.checkInTime, rec.checkOutTime))
-                  : null;
-                return (
-                  <div
-                    key={rec._id || idx}
-                    className={`flex items-center justify-between px-4 py-3 rounded-xl border text-xs ${
-                      isActive
-                        ? "bg-emerald-50 border-emerald-200"
-                        : "bg-slate-50 border-slate-200"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-[10px] ${
-                        isActive ? "bg-emerald-500 text-white" : "bg-slate-300 text-slate-700"
-                      }`}>{idx + 1}</span>
-                      <div>
-                        <div className="font-bold text-slate-800">Visit {idx + 1}</div>
-                        <div className="text-slate-500">
-                          <span className="font-semibold text-[#588b12]">{rec.checkInTime ? formatToIST12Hour(rec.checkInTime) : "--:--"}</span>
-                          <span className="mx-1.5 text-slate-300">→</span>
-                          <span className={isActive ? "text-blue-600 italic" : "font-semibold text-slate-700"}>
-                            {rec.checkOutTime && rec.checkOutTime !== "--:--" ? formatToIST12Hour(rec.checkOutTime) : isActive ? "In Progress..." : "--:--"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {isActive ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Active
-                        </span>
-                      ) : dur ? (
-                        <span className="font-bold text-slate-700">{dur}</span>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )} */}
-      </div>
-
-      {/* ── Monthly Quick Metric Badges ───────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-emerald-50 text-[#588b12] flex items-center justify-center shrink-0">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-lime-50 border border-lime-200 text-[#588b12] flex items-center justify-center font-bold shadow-xs">
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xs font-bold uppercase text-slate-400">Present This Month</div>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">
-              {currentMonthMetrics.presentCount} <span className="text-sm font-semibold text-slate-400">Days</span>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Today's Attendance Status
             </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-lg font-black text-slate-800">
+                {todayAttendance?.status || "Not Checked In Today"}
+              </span>
+              {todayAttendance && (
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                  {todayAttendance.workingHours !== undefined ? `${todayAttendance.workingHours} hrs` : ""}
+                </span>
+              )}
+            </div>
+            {todayAttendance && (
+              <div className="flex items-center gap-4 text-xs text-slate-500 mt-1">
+                <span>
+                  S1: {formatToIST12Hour(todayAttendance.firstinTime) || "--"} - {formatToIST12Hour(todayAttendance.firstoutTime) || "--"}
+                </span>
+                <span>•</span>
+                <span>
+                  S2: {formatToIST12Hour(todayAttendance.secondinTime) || "--"} - {formatToIST12Hour(todayAttendance.secondoutTime) || "--"}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <Timer className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs font-bold uppercase text-slate-400">Total Hours</div>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">
-              {currentMonthMetrics.totalHours}
-            </div>
-          </div>
-        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => handleNewCheckIn()}
+            disabled={punchLoading}
+            className="flex items-center gap-2 rounded-xl bg-[#588b12] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#47700e] transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+          >
+            {punchLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
+            Check In
+          </button>
 
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-            <TrendingUp className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs font-bold uppercase text-slate-400">Overtime (OT)</div>
-            <div className="text-2xl font-black text-amber-600 mt-0.5">
-              {currentMonthMetrics.totalOt}
-            </div>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-            <CalendarDays className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs font-bold uppercase text-slate-400">Total Entries</div>
-            <div className="text-2xl font-black text-slate-900 mt-0.5">
-              {currentMonthMetrics.daysLogged}
-            </div>
-          </div>
+          <button
+            onClick={() => handleNewCheckOut()}
+            disabled={punchLoading}
+            className="flex items-center gap-2 rounded-xl bg-rose-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-rose-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+          >
+            {punchLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+            Check Out
+          </button>
         </div>
       </div>
 
@@ -719,7 +565,7 @@ export default function EmployeeAttendance({ employeeDetails }) {
         </button>
       </div>
 
-      {/* ── TAB 1: Daily Attendance History Table ─────────────────────────── */}
+      {/* ── TAB 1: Daily Attendance History Table (Admin Panel Style) ─────────────────────────── */}
       {activeSubTab === "daily" && (
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Controls bar */}
@@ -730,7 +576,10 @@ export default function EmployeeAttendance({ employeeDetails }) {
                 type="text"
                 placeholder="Search by date or status..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-[#588b12] focus:ring-1 focus:ring-[#588b12]"
               />
             </div>
@@ -739,37 +588,41 @@ export default function EmployeeAttendance({ employeeDetails }) {
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filter:</span>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:border-[#588b12]"
               >
                 <option value="All">All Statuses</option>
                 <option value="Present">Present</option>
                 <option value="Checked In">Checked In</option>
+                <option value="Late Arrival">Late Arrival</option>
                 <option value="Late">Late</option>
-                <option value="Half Day">Half Day</option>
-                <option value="Overtime">With Overtime (OT)</option>
+                <option value="Early Exit">Early Exit</option>
+                <option value="Absent">Absent</option>
+                <option value="On Leave">On Leave</option>
               </select>
             </div>
           </div>
 
-          {/* Table */}
+          {/* Table matching Admin Panel design */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                 <tr>
-                  <th className="px-6 py-3.5">Date</th>
-                  <th className="px-6 py-3.5">Day</th>
-                  <th className="px-6 py-3.5">Check In (IST)</th>
-                  <th className="px-6 py-3.5">Check Out (IST)</th>
-                  <th className="px-6 py-3.5">Duration</th>
-                  <th className="px-6 py-3.5">Daily Overtime (OT)</th>
-                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-4">Date</th>
+                  <th className="px-6 py-4">Day</th>
+                  <th className="px-6 py-4">Session 1 (IST)</th>
+                  <th className="px-6 py-4">Session 2 (IST)</th>
+                  <th className="px-6 py-4">Total Hours</th>
+                  <th className="px-6 py-4">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-150/80">
                 {loadingRecords ? (
                   <tr>
-                    <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan="6" className="px-6 py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="w-6 h-6 animate-spin text-[#588b12]" />
                         <span>Loading attendance records...</span>
@@ -778,64 +631,160 @@ export default function EmployeeAttendance({ employeeDetails }) {
                   </tr>
                 ) : filteredLogs.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan="6" className="px-6 py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Calendar className="w-8 h-8 text-slate-300" />
                         <span className="font-semibold text-slate-500">No attendance logs found</span>
-                        <span className="text-xs">Punch in to create your first attendance record today.</span>
+                        <span className="text-xs">Punch in to create your attendance record.</span>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredLogs.map((log, idx) => (
-                    <tr key={log._id || idx} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-6 py-4 font-bold text-slate-800">
+                  currentLogs.map((log, idx) => (
+                    <tr key={log._id || idx} className="hover:bg-slate-50/50 transition-colors">
+                      {/* Date */}
+                      <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">
                         {log.dateDisplay}
                       </td>
-                      <td className="px-6 py-4 text-slate-500 font-medium">
+
+                      {/* Day */}
+                      <td className="px-6 py-4 text-slate-500 font-semibold">
                         {log.dayDisplay}
                       </td>
-                      <td className="px-6 py-4 font-mono font-semibold text-slate-700">
-                        {log.checkInFormatted}
-                      </td>
-                      <td className="px-6 py-4 font-mono font-semibold text-slate-700">
-                        {log.checkOutFormatted}
-                      </td>
-                      <td className="px-6 py-4 font-semibold text-slate-800">
-                        {log.durationFormatted}
-                      </td>
+
+                      {/* Session 1 (In / Out) */}
                       <td className="px-6 py-4">
-                        {log.isOvertime ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <TrendingUp className="w-3 h-3 text-amber-600" />
-                            {log.otFormatted} OT
+                        <div className="flex flex-col gap-1 text-xs">
+                          <span className="inline-flex items-center gap-1.5 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                            <span className="text-slate-400 text-[10px] uppercase font-bold w-7">In:</span>
+                            <span className="font-semibold text-slate-800">{log.firstIn}</span>
                           </span>
-                        ) : (
-                          <span className="text-slate-400 font-mono">--</span>
-                        )}
+                          <span className="inline-flex items-center gap-1.5 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>
+                            <span className="text-slate-400 text-[10px] uppercase font-bold w-7">Out:</span>
+                            <span className="font-semibold text-slate-800">{log.firstOut}</span>
+                          </span>
+                          {log.firstworkingHours !== undefined && log.firstworkingHours !== null && log.firstoutTime && (
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              Hrs: <span className={Number(log.firstworkingHours) < 0 ? "text-rose-600 font-bold" : "text-slate-700"}>{log.firstworkingHours} hrs</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
+
+                      {/* Session 2 (In / Out) */}
                       <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1 text-xs">
+                          <span className="inline-flex items-center gap-1.5 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                            <span className="text-slate-400 text-[10px] uppercase font-bold w-7">In:</span>
+                            <span className="font-semibold text-slate-800">{log.secondIn}</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 font-medium">
+                            <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>
+                            <span className="text-slate-400 text-[10px] uppercase font-bold w-7">Out:</span>
+                            <span className="font-semibold text-slate-800">{log.secondOut}</span>
+                          </span>
+                          {log.secondworkingHours !== undefined && log.secondworkingHours !== null && log.secondoutTime && (
+                            <span className="text-[11px] font-semibold text-slate-500">
+                              Hrs: <span className={Number(log.secondworkingHours) < 0 ? "text-rose-600 font-bold" : "text-slate-700"}>{log.secondworkingHours} hrs</span>
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Total Working Hours */}
+                      <td className="px-6 py-4 font-bold text-slate-800">
                         <span
-                          className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                            log.status === "Present"
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : log.status === "Checked In"
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : log.status === "Late"
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : log.status === "Half Day"
-                              ? "bg-purple-50 text-purple-700 border border-purple-200"
-                              : "bg-slate-100 text-slate-700"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            Number(log.workingHours) < 0
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : "bg-slate-100 text-slate-800"
                           }`}
                         >
-                          {log.status || "Present"}
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          {log.hours}
                         </span>
+                      </td>
+
+                      {/* Status Badge */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {log.status === "Present" && (
+                          <span className="px-2.5 py-1 rounded-full bg-lime-100 text-lime-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                            ● Present
+                          </span>
+                        )}
+                        {log.status === "Checked In" && (
+                          <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                            ● Checked In
+                          </span>
+                        )}
+                        {(log.status === "Late" || log.status === "Late Arrival") && (
+                          <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                            ● Late Arrival
+                          </span>
+                        )}
+                        {log.status === "Early Exit" && (
+                          <span className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                            ● Early Exit
+                          </span>
+                        )}
+                        {log.status === "Absent" && (
+                          <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                            ● Absent
+                          </span>
+                        )}
+                        {log.status === "On Leave" && (
+                          <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                            ● On Leave
+                          </span>
+                        )}
+                        {![
+                          "Present",
+                          "Checked In",
+                          "Late",
+                          "Late Arrival",
+                          "Early Exit",
+                          "Absent",
+                          "On Leave",
+                        ].includes(log.status) && (
+                          <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold uppercase">
+                            {log.status}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="bg-slate-50/60 px-6 py-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Showing {totalEntries === 0 ? 0 : indexOfFirstLog + 1} to {Math.min(indexOfLastLog, totalEntries)} of {totalEntries} entries
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                disabled={activePage === 1}
+                className="px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+              >
+                &lt;
+              </button>
+              <span className="px-2 font-semibold text-slate-700">
+                {activePage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={activePage === totalPages}
+                className="px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-white cursor-pointer"
+              >
+                &gt;
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -967,55 +916,39 @@ export default function EmployeeAttendance({ employeeDetails }) {
                           day.status === "Sunday" ? "bg-slate-50/40 text-slate-400" : ""
                         }`}
                       >
-                        <td className="px-6 py-3.5 font-bold text-slate-800">
-                          {day.date}
-                        </td>
-                        <td className="px-6 py-3.5 text-slate-500 font-medium">
-                          {day.day}
-                        </td>
-                        <td className="px-6 py-3.5">
+                        <td className="px-6 py-4 font-bold text-slate-800">{day.date}</td>
+                        <td className="px-6 py-4 text-slate-500 font-medium">{day.day}</td>
+                        <td className="px-6 py-4">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                               day.status === "Present"
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : day.status === "Checked In"
-                                ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                : day.status === "On Leave"
-                                ? "bg-blue-50 text-blue-700 border border-blue-200"
                                 : day.status === "Late"
                                 ? "bg-amber-50 text-amber-700 border border-amber-200"
                                 : day.status === "Half Day"
                                 ? "bg-purple-50 text-purple-700 border border-purple-200"
-                                : day.status === "Sunday"
-                                ? "bg-slate-100 text-slate-500"
-                                : "bg-red-50 text-red-600 border border-red-200"
+                                : day.status === "On Leave"
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : day.status === "Absent"
+                                ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                : "bg-slate-100 text-slate-600"
                             }`}
                           >
                             {day.status}
                           </span>
                         </td>
-                        <td className="px-6 py-3.5 font-mono text-slate-700">
-                          {day.checkIn && day.checkIn !== "--:--" ? formatToIST12Hour(day.checkIn) : "--:--"}
+                        <td className="px-6 py-4 font-mono font-semibold text-slate-700">
+                          {day.checkInTime}
                         </td>
-                        <td className="px-6 py-3.5 font-mono text-slate-700">
-                          {day.status === "Checked In" && (!day.checkOut || day.checkOut === "--:--") ? (
-                            <span className="text-blue-600 font-semibold italic">In Progress...</span>
-                          ) : day.checkOut && day.checkOut !== "--:--" ? (
-                            formatToIST12Hour(day.checkOut)
-                          ) : (
-                            "--:--"
-                          )}
+                        <td className="px-6 py-4 font-mono font-semibold text-slate-700">
+                          {day.checkOutTime}
                         </td>
-                        <td className="px-6 py-3.5 font-semibold text-slate-800">
-                          {day.status === "Checked In" && (!day.checkOut || day.durationMinutes === 0) ? (
-                            <span className="text-blue-600 font-semibold italic">In Progress</span>
-                          ) : (
-                            day.durationFormatted || "--"
-                          )}
+                        <td className="px-6 py-4 font-semibold text-slate-800">
+                          {day.workedHoursFormatted}
                         </td>
-                        <td className="px-6 py-3.5">
+                        <td className="px-6 py-4">
                           {day.isOvertime ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                               <TrendingUp className="w-3 h-3 text-amber-600" />
                               {day.otFormatted}
                             </span>
@@ -1035,3 +968,4 @@ export default function EmployeeAttendance({ employeeDetails }) {
     </div>
   );
 }
+  

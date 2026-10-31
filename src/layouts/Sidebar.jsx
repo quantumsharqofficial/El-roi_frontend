@@ -8,6 +8,7 @@ import {
   LogOut,
   ChevronRight,
   LayoutDashboard,
+  Home,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -19,15 +20,17 @@ const ADMIN_MENU = [
   { label: "Employees", icon: Users, tab: "Employees" },
   { label: "Shortlisted Candidates", icon: Users, tab: "Shortlisted" },
   { label: "Attendance",  icon: CalendarCheck, tab: "Attendance Logs" },
+  { label: "Home Visit",  icon: Home,          tab: "Home Visit" },
   { label: 'Leave',       icon: CalendarDays,  tab: 'Leaves' },
-  { label: "Payroll", icon: FileText, tab: "Payroll" },
+  // { label: "Payroll", icon: FileText, tab: "Payroll" },
 ];
 
 const EMPLOYEE_MENU = [
   { label: "Dashboard", icon: LayoutDashboard, tab: "Dashboard" },
   { label: "Attendance", icon: CalendarCheck, tab: "Attendance" },
+  { label: "Home Visit", icon: Home, tab: "Home Visit" },
   { label: "Leave Requests", icon: CalendarDays, tab: "Leave Requests" },
-  { label: "Payslips", icon: FileText, tab: "Payslips" },
+  // { label: "Payslips", icon: FileText, tab: "Payslips" },
   { label: "Profile", icon: Users, tab: "Profile" },
 ];
 

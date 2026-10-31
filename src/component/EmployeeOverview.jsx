@@ -107,9 +107,16 @@ export default function EmployeeOverview({
     setLoadingMonthly(true);
     try {
       const currentMonth = getTodayISTDateString().slice(0, 7);
-      const res = await AxiosInstance.get(
-        `/attendance/monthly-summary?month=${currentMonth}&employeeId=${employeeId}`
-      );
+      let res;
+      try {
+        res = await AxiosInstance.get(
+          `/new-attendance/monthly-summary?month=${currentMonth}&employeeId=${employeeId}`
+        );
+      } catch (newApiErr) {
+        res = await AxiosInstance.get(
+          `/attendance/monthly-summary?month=${currentMonth}&employeeId=${employeeId}`
+        );
+      }
       const list = res.data?.summaries || res.data?.summary || [];
       const mySummary =
         list.find(

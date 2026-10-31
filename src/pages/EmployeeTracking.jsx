@@ -213,7 +213,12 @@ export default function EmployeeTracking() {
     const fetchMonthly = async () => {
       setLoadingMonthly(true);
       try {
-        const res = await AxiosInstance.get(`/attendance/monthly-summary?month=${summaryMonth}&employeeId=${empId}`);
+        let res;
+        try {
+          res = await AxiosInstance.get(`/new-attendance/monthly-summary?month=${summaryMonth}&employeeId=${empId}`);
+        } catch (newApiErr) {
+          res = await AxiosInstance.get(`/attendance/monthly-summary?month=${summaryMonth}&employeeId=${empId}`);
+        }
         if (res.data?.success && res.data.summaries?.length > 0) {
           setMonthlySummaryData({
             ...res.data,

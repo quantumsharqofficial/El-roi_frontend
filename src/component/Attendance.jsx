@@ -25,7 +25,7 @@ const formatToIST12Hour = (timeVal) => {
   if (!timeVal || timeVal === 'N/A' || timeVal === 'Present') return timeVal || 'N/A';
   if (typeof timeVal === 'string' && (timeVal.toUpperCase() === 'IN PROGRESS...' || timeVal === '--:--')) return timeVal;
 
-  if (typeof timeVal === 'string' && (timeVal.includes('T') || timeVal.includes('Z'))) {
+  if (timeVal instanceof Date || (typeof timeVal === 'string' && (timeVal.includes('T') || timeVal.includes('Z')))) {
     const d = new Date(timeVal);
     if (!isNaN(d.getTime())) {
       return d.toLocaleTimeString('en-US', {
@@ -86,7 +86,7 @@ const calculateHours = (checkIn, checkOut) => {
   }
 };
 
-export default function Attendance({ employees }) {
+export default function Attendance({ employees = [] }) {
   const navigate = useNavigate();
 
   // Mode state: 'daily' | 'monthly'
@@ -110,6 +110,7 @@ export default function Attendance({ employees }) {
   const [loadingMonthly, setLoadingMonthly] = useState(false);
   const [monthlySearch, setMonthlySearch] = useState('');
   const [selectedBreakdownEmp, setSelectedBreakdownEmp] = useState(null);
+  const [breakdownTab, setBreakdownTab] = useState('daily'); // 'daily' | 'home'
 
   const [attendanceFormData, setAttendanceFormData] = useState({
     employee_ID: '',
@@ -119,34 +120,83 @@ export default function Attendance({ employees }) {
     status: 'Present'
   });
 
-  // Fetch Daily Logs
+  // Fetch Daily Logs using the new Attendance API
   const fetchLogs = () => {
-    AxiosInstance.get(`/attendance/find-date/${attendanceDate}`)
+    AxiosInstance.get(`/new-attendance/finddate/${attendanceDate}`)
       .then(res => {
-        if (res.data) {
-          const formatted = res.data.map(log => {
-            const emp = employees.find(e => e.id === log.employee_ID || e._id === log.employee_ID || e.employeeId === log.employee_ID);
-            const empDbId = emp?._id || emp?.id;
-            const empBusinessId = emp?.employeeId || emp?.id || log.employee_ID;
+        const rawList = Array.isArray(res.data) 
+          ? res.data 
+          : (res.data?.data || []);
 
-            return {
-              id: log.employee_ID,
-              empDbId,
-              empBusinessId,
-              name: log.name || (emp ? [emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.name : log.employee_ID),
-              designation: emp ? emp.designation : 'Staff',
-              date: log.date
-                ? new Date(log.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
-                : '',
-              checkIn: formatToIST12Hour(log.checkInTime),
-              checkOut: log.checkOutTime ? formatToIST12Hour(log.checkOutTime) : (log.status === 'Checked In' ? 'In Progress...' : '--:--'),
-              hours: log.checkInTime && log.checkOutTime ? calculateHours(log.checkInTime, log.checkOutTime) : (log.status === 'Checked In' ? 'In Progress...' : 'N/A'),
-              status: log.status || 'Present',
-              avatar: emp?.profilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-            };
-          });
-          setAttendanceLogs(formatted);
-        }
+        const formatted = rawList.map(log => {
+          const emp = employees.find(e => 
+            e.id === log.employee_ID || 
+            e._id === log.employee_ID || 
+            e.employeeId === log.employee_ID
+          ) || log.employeeDetails;
+
+          const empDbId = emp?._id || emp?.id;
+          const empBusinessId = emp?.employeeId || emp?.id || log.employee_ID;
+
+          const firstIn = formatToIST12Hour(log.firstinTime || log.checkInTime);
+          const firstOut = log.firstoutTime 
+            ? formatToIST12Hour(log.firstoutTime) 
+            : (log.checkOutTime ? formatToIST12Hour(log.checkOutTime) : (log.firstinTime && !log.secondinTime ? 'In Progress...' : '--:--'));
+
+          const secondIn = log.secondinTime 
+            ? formatToIST12Hour(log.secondinTime) 
+            : '--:--';
+          const secondOut = log.secondoutTime 
+            ? formatToIST12Hour(log.secondoutTime) 
+            : (log.secondinTime ? 'In Progress...' : '--:--');
+
+          let hoursDisplay = 'N/A';
+          if (log.workingHours !== undefined && log.workingHours !== null) {
+            const wh = Number(log.workingHours);
+            if (!isNaN(wh)) {
+              hoursDisplay = `${wh} hrs`;
+            }
+          } else if (log.firstinTime && log.firstoutTime) {
+            hoursDisplay = calculateHours(firstIn, firstOut);
+          } else if (log.checkInTime && log.checkOutTime) {
+            hoursDisplay = calculateHours(log.checkInTime, log.checkOutTime);
+          } else if (log.firstinTime || log.secondinTime) {
+            hoursDisplay = 'In Progress...';
+          }
+
+          return {
+            id: log.employee_ID,
+            empDbId,
+            empBusinessId,
+            name: log.employeeName || log.name || (emp ? [emp.firstName, emp.lastName].filter(Boolean).join(' ') || emp.name : log.employee_ID),
+            designation: log.designation || emp?.designation || 'Staff',
+            department: log.department || emp?.department || 'General',
+            date: log.date
+              ? new Date(log.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-')
+              : '',
+            firstIn,
+            firstOut,
+            secondIn,
+            secondOut,
+            firstinTime: log.firstinTime,
+            firstoutTime: log.firstoutTime,
+            secondinTime: log.secondinTime,
+            secondoutTime: log.secondoutTime,
+            checkIn: firstIn,
+            checkOut: log.secondoutTime ? secondOut : firstOut,
+            firstworkingHours: log.firstworkingHours,
+            secondworkingHours: log.secondworkingHours,
+            hours: hoursDisplay,
+            workingHours:
+              log.workingHours !== undefined && log.workingHours !== null
+                ? log.workingHours
+                : ((log.firstworkingHours || 0) + (log.secondworkingHours || 0)),
+            status: log.status || 'Present',
+            place: log.place || log.address || '',
+            avatar: emp?.profilePhoto || log.employeeDetails?.profilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+          };
+        });
+        setAttendanceLogs(formatted);
       })
       .catch(err => {
         console.warn('Attendance logs not found or empty for this date:', err.message);
@@ -160,18 +210,27 @@ export default function Attendance({ employees }) {
     }
   }, [attendanceDate, employees, viewMode]);
 
-  // Fetch Monthly Summary
+  // Fetch Monthly Summary using the New Attendance API
   const fetchMonthlySummary = () => {
     setLoadingMonthly(true);
-    AxiosInstance.get(`/attendance/monthly-summary?month=${summaryMonth}`)
+    AxiosInstance.get(`/new-attendance/monthly-summary?month=${summaryMonth}`)
       .then(res => {
         if (res.data && res.data.success) {
           setMonthlyData(res.data);
         }
       })
       .catch(err => {
-        console.error('Error fetching monthly summary:', err);
-        setMonthlyData(null);
+        console.warn('New attendance monthly-summary request error, falling back to legacy route:', err?.message);
+        AxiosInstance.get(`/attendance/monthly-summary?month=${summaryMonth}`)
+          .then(res => {
+            if (res.data && res.data.success) {
+              setMonthlyData(res.data);
+            }
+          })
+          .catch(fallbackErr => {
+            console.error('Error fetching monthly summary:', fallbackErr);
+            setMonthlyData(null);
+          });
       })
       .finally(() => {
         setLoadingMonthly(false);
@@ -229,10 +288,21 @@ export default function Attendance({ employees }) {
   };
 
   const filteredLogs = attendanceLogs.filter(log => {
-    const matchesSearch = log.name.toLowerCase().includes(attendanceSearch.toLowerCase()) || 
-                          log.id.toLowerCase().includes(attendanceSearch.toLowerCase());
-    const matchesStatus = attendanceStatusFilter === 'All' || 
-                          log.status.toLowerCase() === attendanceStatusFilter.toLowerCase();
+    const matchesSearch =
+      log.name.toLowerCase().includes(attendanceSearch.toLowerCase()) || 
+      log.id.toLowerCase().includes(attendanceSearch.toLowerCase()) ||
+      (log.designation && log.designation.toLowerCase().includes(attendanceSearch.toLowerCase()));
+
+    let matchesStatus = attendanceStatusFilter === 'All';
+    if (!matchesStatus) {
+      const s = (log.status || '').toLowerCase();
+      const filter = attendanceStatusFilter.toLowerCase();
+      if (filter === 'late' || filter === 'late arrival') {
+        matchesStatus = s.includes('late');
+      } else {
+        matchesStatus = s === filter;
+      }
+    }
     return matchesSearch && matchesStatus;
   });
 
@@ -346,13 +416,15 @@ export default function Attendance({ employees }) {
               <select
                 value={attendanceStatusFilter}
                 onChange={(e) => setAttendanceStatusFilter(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-semibold"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#588b12] font-semibold text-slate-750"
               >
-                <option value="All">All</option>
+                <option value="All">All Statuses</option>
                 <option value="Present">Present</option>
                 <option value="Checked In">Checked In</option>
-                <option value="Late">Late</option>
+                <option value="Late Arrival">Late Arrival</option>
+                <option value="Early Exit">Early Exit</option>
                 <option value="Absent">Absent</option>
+                <option value="On Leave">On Leave</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -370,21 +442,21 @@ export default function Attendance({ employees }) {
             </div>
           </div>
 
-          {/* Daily Table */}
+          {/* Daily Table for New Attendance */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                    <th className="px-6 py-4">Employee ID</th>
-                    <th className="px-6 py-4">Full Name</th>
-                    <th className="px-6 py-4">Designation</th>
-                    <th className="px-6 py-4">Date</th>
-                    <th className="px-6 py-4">Check-In (IST)</th>
-                    <th className="px-6 py-4">Check-Out (IST)</th>
-                    <th className="px-6 py-4">Total Hours</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-5 py-4">Employee ID</th>
+                    <th className="px-5 py-4">Full Name</th>
+                    <th className="px-4 py-4">Designation</th>
+                    <th className="px-4 py-4">Session 1 (IST)</th>
+                    <th className="px-4 py-4 text-center">1st Work Hours</th>
+                    <th className="px-4 py-4">Session 2 (IST)</th>
+                    <th className="px-4 py-4 text-center">2nd Work Hours</th>
+                    <th className="px-4 py-4 text-center">Total Hours</th>
+                    <th className="px-5 py-4">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-150/80 text-sm">
@@ -396,78 +468,159 @@ export default function Attendance({ employees }) {
                     </tr>
                   ) : (
                     currentLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50/40 transition-colors">
-                        <td className="px-6 py-4 font-mono font-bold text-slate-600">{log.id}</td>
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <img
-                            src={log.avatar}
-                            alt={log.name}
-                            className="w-8 h-8 rounded-full object-cover border"
-                            onError={(e) => {
-                              e.target.src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-                            }}
-                          />
-                          <span className="font-semibold text-slate-900">{log.name}</span>
+                      <tr key={log.id + (log.date || '')} className="hover:bg-slate-50/40 transition-colors">
+                        {/* Employee ID */}
+                        <td className="px-5 py-4 font-mono font-bold text-slate-600">
+                          {log.id}
                         </td>
-                        <td className="px-6 py-4 text-slate-600 font-medium">{log.designation}</td>
-                        <td className="px-6 py-4 text-slate-500 font-medium">{log.date}</td>
-                        <td className="px-6 py-4 font-medium text-slate-750">
-                          <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
-                            <Clock className="w-3.5 h-3.5 text-[#588b12]" />
-                            {log.checkIn}
-                          </span>
-                          {log.status === 'Late' && (
-                            <span className="ml-2 text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                              ● Late
+
+                        {/* Full Name & Avatar */}
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={log.avatar}
+                              alt={log.name}
+                              className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0 shadow-xs"
+                              onError={(e) => {
+                                e.target.src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                              }}
+                            />
+                            <div>
+                              <span className="font-semibold text-slate-900 block leading-tight">{log.name}</span>
+                            </div>
+                          </div>
+                        </td>
+                        {/* Designation & Department */}
+                        <td className="px-4 py-4 text-slate-600 font-medium">
+                          <span>{log.designation}</span>
+                          <span className="block text-[11px] text-slate-400 font-normal">{log.department}</span>
+                        </td>
+
+                        {/* Session 1 (In / Out) */}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span className="inline-flex items-center gap-1.5 text-slate-750 font-medium">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                              <span className="text-slate-400 text-[10px] uppercase font-bold w-7">In:</span>
+                              <span className="font-semibold text-slate-800">{log.firstIn}</span>
                             </span>
-                          )}
+                            <span className="inline-flex items-center gap-1.5 text-slate-750 font-medium">
+                              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>
+                              <span className="text-slate-400 text-[10px] uppercase font-bold w-7">Out:</span>
+                              <span className="font-semibold text-slate-800">{log.firstOut}</span>
+                            </span>
+                          </div>
                         </td>
-                        <td className="px-6 py-4 font-medium text-slate-750">
-                          {log.checkOut !== '--:--' && log.checkOut !== 'N/A' && log.checkOut !== 'In Progress...' ? (
-                            <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              {log.checkOut}
+
+                        {/* First Work Hours */}
+                        <td className="px-4 py-4 text-center whitespace-nowrap">
+                          {log.firstworkingHours !== undefined && log.firstworkingHours !== null && (log.firstoutTime || log.firstworkingHours > 0 || log.firstworkingHours < 0) ? (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              Number(log.firstworkingHours) < 0
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}>
+                              <Clock className="w-3 h-3 text-emerald-600" />
+                              {log.firstworkingHours} hrs
+                            </span>
+                          ) : log.firstinTime && !log.firstoutTime ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              In Progress
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400 font-semibold">{log.checkOut}</span>
+                            <span className="text-slate-400 text-xs font-semibold">--</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 font-bold text-slate-800">
-                          {log.hours}
+
+                        {/* Session 2 (In / Out) */}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 text-xs">
+                            <span className="inline-flex items-center gap-1.5 text-slate-750 font-medium">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                              <span className="text-slate-400 text-[10px] uppercase font-bold w-7">In:</span>
+                              <span className="font-semibold text-slate-800">{log.secondIn}</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 text-slate-750 font-medium">
+                              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>
+                              <span className="text-slate-400 text-[10px] uppercase font-bold w-7">Out:</span>
+                              <span className="font-semibold text-slate-800">{log.secondOut}</span>
+                            </span>
+                          </div>
                         </td>
-                        <td className="px-6 py-4">
+
+                        {/* Second Work Hours */}
+                        <td className="px-4 py-4 text-center whitespace-nowrap">
+                          {log.secondworkingHours !== undefined && log.secondworkingHours !== null && (log.secondoutTime || log.secondworkingHours > 0 || log.secondworkingHours < 0) ? (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              Number(log.secondworkingHours) < 0
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}>
+                              <Clock className="w-3 h-3 text-emerald-600" />
+                              {log.secondworkingHours} hrs
+                            </span>
+                          ) : log.secondinTime && !log.secondoutTime ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                              In Progress
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs font-semibold">--</span>
+                          )}
+                        </td>
+
+                        {/* Total Working Hours */}
+                        <td className="px-4 py-4 text-center font-bold text-slate-800 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            Number(log.workingHours) < 0 
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-slate-100 text-slate-800 border border-slate-200'
+                          }`}>
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            {log.hours}
+                          </span>
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="px-5 py-4 whitespace-nowrap">
                           {log.status === 'Present' && (
-                            <span className="px-2.5 py-1 rounded bg-lime-100 text-lime-800 text-xs font-bold uppercase">
-                              Present
+                            <span className="px-2.5 py-1 rounded-full bg-lime-100 text-lime-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                              ● Present
                             </span>
                           )}
                           {log.status === 'Checked In' && (
-                            <span className="px-2.5 py-1 rounded bg-blue-100 text-blue-800 text-xs font-bold uppercase">
-                              Checked In
+                            <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                              ● Checked In
                             </span>
                           )}
-                          {log.status === 'Late' && (
-                            <span className="px-2.5 py-1 rounded bg-amber-100 text-amber-800 text-xs font-bold uppercase">
-                              Late
+                          {(log.status === 'Late' || log.status === 'Late Arrival') && (
+                            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                              ● Late Arrival
+                            </span>
+                          )}
+                          {log.status === 'Early Exit' && (
+                            <span className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                              ● Early Exit
                             </span>
                           )}
                           {log.status === 'Absent' && (
-                            <span className="px-2.5 py-1 rounded bg-rose-100 text-rose-800 text-xs font-bold uppercase">
-                              Absent
+                            <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                              ● Absent
                             </span>
                           )}
                           {log.status === 'On Leave' && (
-                            <span className="px-2.5 py-1 rounded bg-purple-100 text-purple-800 text-xs font-bold uppercase">
-                              On Leave
+                            <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 text-xs font-bold uppercase inline-flex items-center gap-1">
+                              ● On Leave
                             </span>
                           )}
-                          {!['Present', 'Checked In', 'Late', 'Absent', 'On Leave'].includes(log.status) && (
-                            <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 text-xs font-bold uppercase">
+                          {!['Present', 'Checked In', 'Late', 'Late Arrival', 'Early Exit', 'Absent', 'On Leave'].includes(log.status) && (
+                            <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-bold uppercase">
                               {log.status}
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right">
+
+                        {/* Actions */}
+                        {/* <td className="px-6 py-4 text-right whitespace-nowrap">
                           <button
                             onClick={() => {
                               const emp = employees.find(e => e.id === log.id || e.employeeId === log.id || e._id === log.id);
@@ -475,11 +628,11 @@ export default function Attendance({ employees }) {
                               const targetBizId = emp?.employeeId || log.empBusinessId || log.id;
                               navigate(`/employee-tracking/${targetDbId}/${targetBizId}`);
                             }}
-                            className="text-[#588b12] hover:text-[#456e0e] text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
+                            className="text-[#588b12] hover:text-[#456e0e] text-xs font-bold inline-flex items-center gap-1 cursor-pointer bg-lime-50 hover:bg-lime-100 px-3 py-1.5 rounded-lg border border-lime-200 transition-colors"
                           >
-                            Daily Tracking <ArrowRight className="w-3.5 h-3.5" />
+                            Tracking <ArrowRight className="w-3.5 h-3.5" />
                           </button>
-                        </td>
+                        </td> */}
                       </tr>
                     ))
                   )}
@@ -576,7 +729,7 @@ export default function Attendance({ employees }) {
           </div>
 
           {/* Monthly KPI Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                 <CalendarDays className="w-6 h-6" />
@@ -628,7 +781,7 @@ export default function Attendance({ employees }) {
                 <p className="text-[11px] text-slate-500 mt-0.5">Monthly Team Average</p>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Monthly Summary Table */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
@@ -650,24 +803,27 @@ export default function Attendance({ employees }) {
                     <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
                       <th className="px-6 py-4">Employee</th>
                       <th className="px-4 py-4">Designation</th>
-                      <th className="px-3 py-4 text-center">Working</th>
+                      <th className="px-3 py-4 text-center">Working Day</th>
                       <th className="px-3 py-4 text-center">Present</th>
-                      <th className="px-3 py-4 text-center">Late</th>
-                      <th className="px-3 py-4 text-center">Half Day</th>
+                      <th className="px-3 py-4 text-center">Morning Late</th>
+                      <th className="px-3 py-4 text-center">Early Check Out</th>
                       <th className="px-3 py-4 text-center">Absent</th>
                       <th className="px-3 py-4 text-center">Leave</th>
-                      <th className="px-4 py-4 text-right">Total Hours</th>
-                      <th className="px-4 py-4 text-right">Overtime (OT)</th>
-                      <th className="px-4 py-4 text-center">Attendance %</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
+                      <th className="px-3 py-4 text-center">Home Visit Count</th>
+                      <th className="px-4 py-4 text-center">
+                        <span className="inline-flex items-center gap-1">
+                          Home <Eye className="w-3.5 h-3.5 text-slate-400" />
+                        </span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-150/80 text-sm">
                     {filteredMonthlySummaries.map((emp) => (
                       <tr key={emp.employeeId} className="hover:bg-slate-50/50 transition-colors">
+                        {/* Employee */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shrink-0 overflow-hidden">
+                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 text-xs shrink-0 overflow-hidden shadow-xs">
                               {emp.profilePhoto ? (
                                 <img
                                   src={emp.profilePhoto}
@@ -684,94 +840,87 @@ export default function Attendance({ employees }) {
                             </div>
                           </div>
                         </td>
+
+                        {/* Designation */}
                         <td className="px-4 py-4 text-slate-600 font-medium text-xs">
                           {emp.designation}
                         </td>
-                        <td className="px-3 py-4 text-center font-bold text-slate-700">
+
+                        {/* Working Day */}
+                        <td className="px-3 py-4 text-center font-bold text-slate-800">
                           {emp.workingDays}
                         </td>
+
+                        {/* Present */}
                         <td className="px-3 py-4 text-center">
-                          <span className="inline-block px-2 py-0.5 rounded-md bg-lime-50 text-lime-700 font-bold text-xs border border-lime-200">
+                          <span className="inline-block px-3 py-1 rounded-md bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200 shadow-xs">
                             {emp.presentDays}
                           </span>
                         </td>
+
+                        {/* Morning Late */}
                         <td className="px-3 py-4 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${
-                            emp.lateDays > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'text-slate-400'
+                          <span className={`inline-block px-3 py-1 rounded-md font-bold text-xs shadow-xs ${
+                            (emp.morningLateDays || emp.lateDays) > 0
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-amber-50/60 text-amber-600/80 border border-amber-100'
                           }`}>
-                            {emp.lateDays}
+                            {emp.morningLateDays ?? emp.lateDays ?? 0}
                           </span>
                         </td>
+
+                        {/* Early Check Out */}
                         <td className="px-3 py-4 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${
-                            emp.halfDays > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'text-slate-400'
+                          <span className={`inline-block px-3 py-1 rounded-md font-bold text-xs shadow-xs ${
+                            (emp.earlyCheckOutDays || emp.halfDays) > 0
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-rose-50/60 text-rose-600/80 border border-rose-100'
                           }`}>
-                            {emp.halfDays}
+                            {emp.earlyCheckOutDays ?? emp.halfDays ?? 0}
                           </span>
                         </td>
+
+                        {/* Absent */}
                         <td className="px-3 py-4 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${
-                            emp.absentDays > 0 ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'text-slate-400'
+                          <span className={`inline-block px-3 py-1 rounded-md font-bold text-xs shadow-xs ${
+                            emp.absentDays > 0
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-rose-50/60 text-rose-600/80 border border-rose-100'
                           }`}>
-                            {emp.absentDays}
+                            {emp.absentDays ?? 0}
                           </span>
                         </td>
+
+                        {/* Leave */}
                         <td className="px-3 py-4 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-md font-bold text-xs ${
-                            emp.onLeaveDays > 0 ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'text-slate-400'
+                          <span className={`inline-block px-3 py-1 rounded-md font-bold text-xs shadow-xs ${
+                            emp.onLeaveDays > 0
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-amber-50/60 text-amber-600/80 border border-amber-100'
                           }`}>
-                            {emp.onLeaveDays}
+                            {emp.onLeaveDays ?? 0}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-right font-extrabold text-slate-900">
-                          {emp.totalWorkedFormatted}
+
+                        {/* Home Visit Count */}
+                        <td className="px-3 py-4 text-center">
+                          <span className="inline-block px-3 py-1 rounded-md bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200 shadow-xs">
+                            {emp.homeVisitCount ?? 0}
+                          </span>
                         </td>
-                        <td className="px-4 py-4 text-right">
-                          {emp.totalOtMinutes > 0 ? (
-                            <span className="inline-block px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 font-extrabold text-xs border border-amber-200">
-                              +{emp.totalOtFormatted}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-xs font-semibold">0m</span>
-                          )}
-                        </td>
+
+                        {/* Home Eye Action */}
                         <td className="px-4 py-4 text-center">
-                          <div className="inline-flex items-center gap-1.5">
-                            <div className="w-12 bg-slate-200 rounded-full h-2 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  emp.attendanceRate >= 90
-                                    ? 'bg-[#588b12]'
-                                    : emp.attendanceRate >= 75
-                                    ? 'bg-amber-500'
-                                    : 'bg-rose-500'
-                                }`}
-                                style={{ width: `${Math.min(100, emp.attendanceRate)}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-bold text-slate-700">{emp.attendanceRate}%</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => setSelectedBreakdownEmp(emp)}
-                              title="View Monthly Daily Breakdown"
-                              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                const realEmp = employees.find(e => e.employeeId === emp.employeeId || e.id === emp.employeeId || e._id === emp._id);
-                                const targetDbId = realEmp?._id || emp._id;
-                                navigate(`/employee-tracking/${targetDbId}/${emp.employeeId}`);
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-[#588b12]/10 hover:bg-[#588b12]/20 text-[#588b12] text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                            >
-                              Daily Tracking <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedBreakdownEmp(emp);
+                              setBreakdownTab('daily');
+                            }}
+                            title="View Attendance & Home Visits"
+                            className="w-8 h-8 mx-auto rounded-full border border-slate-200 hover:border-[#588b12] hover:bg-lime-50 text-slate-500 hover:text-[#588b12] transition-colors flex items-center justify-center cursor-pointer shadow-xs"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -786,94 +935,279 @@ export default function Attendance({ employees }) {
       {/* Day-by-Day Breakdown Modal for Selected Employee in Monthly View */}
       {selectedBreakdownEmp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-base">
-                  {selectedBreakdownEmp.name} — Monthly Breakdown
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {selectedBreakdownEmp.employeeId} • {monthlyData?.monthName || summaryMonth}
-                </p>
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center font-bold text-slate-700 text-sm overflow-hidden shrink-0">
+                  {selectedBreakdownEmp.profilePhoto ? (
+                    <img
+                      src={selectedBreakdownEmp.profilePhoto}
+                      alt={selectedBreakdownEmp.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    selectedBreakdownEmp.name.charAt(0)
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base leading-tight">
+                    {selectedBreakdownEmp.name}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {selectedBreakdownEmp.employeeId} • {selectedBreakdownEmp.designation} • {monthlyData?.monthName || summaryMonth}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setSelectedBreakdownEmp(null)}
-                className="text-slate-400 hover:text-slate-700 transition-colors p-1"
+                className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 rounded-lg hover:bg-slate-200/60"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1 divide-y divide-slate-100">
-              <div className="grid grid-cols-3 gap-3 mb-4 pb-4 border-b border-slate-200 text-center">
-                <div className="bg-slate-50 p-2.5 rounded-xl">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Total Worked</p>
-                  <p className="text-sm font-extrabold text-slate-900">{selectedBreakdownEmp.totalWorkedFormatted}</p>
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {/* Metric Stats Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-center">
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70">
+                  <p className="text-[10px] uppercase font-bold text-slate-400">Working Days</p>
+                  <p className="text-base font-extrabold text-slate-900 mt-0.5">{selectedBreakdownEmp.workingDays}</p>
+                </div>
+                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/60">
+                  <p className="text-[10px] uppercase font-bold text-emerald-700">Present</p>
+                  <p className="text-base font-extrabold text-emerald-800 mt-0.5">{selectedBreakdownEmp.presentDays}</p>
                 </div>
                 <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-200/60">
-                  <p className="text-[10px] uppercase font-bold text-amber-700">Total Overtime (OT)</p>
-                  <p className="text-sm font-extrabold text-amber-800">+{selectedBreakdownEmp.totalOtFormatted}</p>
+                  <p className="text-[10px] uppercase font-bold text-amber-700">Morning Late</p>
+                  <p className="text-base font-extrabold text-amber-800 mt-0.5">{selectedBreakdownEmp.morningLateDays ?? selectedBreakdownEmp.lateDays ?? 0}</p>
                 </div>
-                <div className="bg-lime-50 p-2.5 rounded-xl border border-lime-200/60">
-                  <p className="text-[10px] uppercase font-bold text-lime-700">Attendance Rate</p>
-                  <p className="text-sm font-extrabold text-lime-800">{selectedBreakdownEmp.attendanceRate}%</p>
+                <div className="bg-rose-50 p-2.5 rounded-xl border border-rose-200/60">
+                  <p className="text-[10px] uppercase font-bold text-rose-700">Early Check Out</p>
+                  <p className="text-base font-extrabold text-rose-800 mt-0.5">{selectedBreakdownEmp.earlyCheckOutDays ?? selectedBreakdownEmp.halfDays ?? 0}</p>
+                </div>
+                <div className="bg-rose-50 p-2.5 rounded-xl border border-rose-200/60">
+                  <p className="text-[10px] uppercase font-bold text-rose-700">Absent</p>
+                  <p className="text-base font-extrabold text-rose-800 mt-0.5">{selectedBreakdownEmp.absentDays ?? 0}</p>
+                </div>
+                <div className="bg-purple-50 p-2.5 rounded-xl border border-purple-200/60">
+                  <p className="text-[10px] uppercase font-bold text-purple-700">Leave</p>
+                  <p className="text-base font-extrabold text-purple-800 mt-0.5">{selectedBreakdownEmp.onLeaveDays ?? 0}</p>
+                </div>
+                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/60">
+                  <p className="text-[10px] uppercase font-bold text-emerald-700">Home Visits</p>
+                  <p className="text-base font-extrabold text-emerald-800 mt-0.5">{selectedBreakdownEmp.homeVisitCount ?? 0}</p>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase">
-                      <th className="py-2.5">Date</th>
-                      <th className="py-2.5">Day</th>
-                      <th className="py-2.5">Status</th>
-                      <th className="py-2.5">Check-In</th>
-                      <th className="py-2.5">Check-Out</th>
-                      <th className="py-2.5 text-right">Worked</th>
-                      <th className="py-2.5 text-right">Overtime</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {selectedBreakdownEmp.dailyBreakdown.map((row) => (
-                      <tr key={row.date} className="hover:bg-slate-50/60">
-                        <td className="py-2 font-mono font-medium text-slate-600">{row.date}</td>
-                        <td className="py-2 font-medium text-slate-500">{row.day}</td>
-                        <td className="py-2">
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                              row.status === 'Present'
-                                ? 'bg-lime-100 text-lime-800'
-                                : row.status === 'Late'
-                                ? 'bg-amber-100 text-amber-800'
-                                : row.status === 'Half Day'
-                                ? 'bg-blue-100 text-blue-800'
-                                : row.status === 'Absent'
-                                ? 'bg-rose-100 text-rose-800'
-                                : row.status === 'On Leave'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-slate-100 text-slate-500'
-                            }`}
-                          >
-                            {row.status}
-                          </span>
-                        </td>
-                        <td className="py-2 font-medium text-slate-700">{formatToIST12Hour(row.checkIn)}</td>
-                        <td className="py-2 font-medium text-slate-700">{formatToIST12Hour(row.checkOut)}</td>
-                        <td className="py-2 text-right font-bold text-slate-800">{row.durationFormatted}</td>
-                        <td className="py-2 text-right font-extrabold text-amber-600">
-                          {row.otMinutes > 0 ? `+${row.otFormatted}` : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {/* Sub-Tabs: Daily Breakdown vs Home Visits */}
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+                <button
+                  onClick={() => setBreakdownTab('daily')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    breakdownTab === 'daily'
+                      ? 'bg-[#588b12] text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Daily Breakdown (Multi-Shift)
+                </button>
+                <button
+                  onClick={() => setBreakdownTab('home')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    breakdownTab === 'home'
+                      ? 'bg-[#588b12] text-white shadow-xs'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>Home Visits</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    breakdownTab === 'home' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {selectedBreakdownEmp.homeVisitCount || 0}
+                  </span>
+                </button>
               </div>
+
+              {/* TAB 1: Daily Breakdown Table */}
+              {breakdownTab === 'daily' && (
+                <div className="overflow-x-auto rounded-2xl border border-slate-200/80">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="px-3.5 py-2.5">Date</th>
+                        <th className="px-2.5 py-2.5">Day</th>
+                        <th className="px-3 py-2.5">Status</th>
+                        <th className="px-3.5 py-2.5">Session 1 (IST)</th>
+                        <th className="px-3 py-2.5 text-center">1st Work Hours</th>
+                        <th className="px-3.5 py-2.5">Session 2 (IST)</th>
+                        <th className="px-3 py-2.5 text-center">2nd Work Hours</th>
+                        <th className="px-3 py-2.5 text-center">Total Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {selectedBreakdownEmp.dailyBreakdown.map((row) => (
+                        <tr key={row.date} className="hover:bg-slate-50/60">
+                          <td className="px-3.5 py-2.5 font-mono font-medium text-slate-700">{row.date}</td>
+                          <td className="px-2.5 py-2.5 font-medium text-slate-500">{row.day}</td>
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap ${
+                                row.status === 'Present'
+                                  ? 'bg-lime-100 text-lime-800'
+                                  : row.status === 'Morning Late' || row.status === 'Late'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : row.status === 'Early Check Out' || row.status === 'Early Exit'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : row.status === 'Half Day'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : row.status === 'Absent'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : row.status === 'On Leave'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-slate-100 text-slate-500'
+                              }`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+
+                          {/* Session 1 */}
+                          <td className="px-3.5 py-2.5 font-medium text-slate-700 whitespace-nowrap">
+                            {row.firstIn !== '--:--' || row.firstOut !== '--:--' ? (
+                              <div className="flex flex-col text-[11px]">
+                                <span>In: <strong className="text-slate-800">{row.firstIn}</strong></span>
+                                <span>Out: <strong className="text-slate-800">{row.firstOut}</strong></span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">--:--</span>
+                            )}
+                          </td>
+
+                          {/* 1st Work Hours */}
+                          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            {row.firstworkingHours !== undefined && row.firstworkingHours !== null && (row.firstOut !== '--:--' || row.firstworkingHours > 0 || row.firstworkingHours < 0) ? (
+                              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                Number(row.firstworkingHours) < 0
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                                {row.firstworkingHours} hrs
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">--</span>
+                            )}
+                          </td>
+
+                          {/* Session 2 */}
+                          <td className="px-3.5 py-2.5 font-medium text-slate-700 whitespace-nowrap">
+                            {row.secondIn !== '--:--' || row.secondOut !== '--:--' ? (
+                              <div className="flex flex-col text-[11px]">
+                                <span>In: <strong className="text-slate-800">{row.secondIn}</strong></span>
+                                <span>Out: <strong className="text-slate-800">{row.secondOut}</strong></span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">--:--</span>
+                            )}
+                          </td>
+
+                          {/* 2nd Work Hours */}
+                          <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                            {row.secondworkingHours !== undefined && row.secondworkingHours !== null && (row.secondOut !== '--:--' || row.secondworkingHours > 0 || row.secondworkingHours < 0) ? (
+                              <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                Number(row.secondworkingHours) < 0
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              }`}>
+                                {row.secondworkingHours} hrs
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">--</span>
+                            )}
+                          </td>
+
+                          {/* Total Hours */}
+                          <td className="px-3 py-2.5 text-center font-bold text-slate-800 whitespace-nowrap">
+                            {row.workingHours !== undefined && row.workingHours > 0 ? (
+                              <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-800">
+                                {row.workingHours} hrs
+                              </span>
+                            ) : row.durationFormatted && row.durationFormatted !== '0m' ? (
+                              <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-800">
+                                {row.durationFormatted}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">0m</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* TAB 2: Home Visits List */}
+              {breakdownTab === 'home' && (
+                <div className="space-y-3">
+                  {!selectedBreakdownEmp.homeVisits || selectedBreakdownEmp.homeVisits.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/70">
+                      <p className="text-sm font-bold text-slate-700">No Home Visits Recorded</p>
+                      <p className="text-xs text-slate-400 mt-1">This employee has no home visit sessions recorded for {monthlyData?.monthName || summaryMonth}.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl border border-slate-200/80">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                          <tr>
+                            <th className="px-4 py-2.5">Date</th>
+                            <th className="px-3 py-2.5">Day</th>
+                            <th className="px-4 py-2.5">Place</th>
+                            <th className="px-4 py-2.5">Address</th>
+                            <th className="px-4 py-2.5">Timings</th>
+                            <th className="px-3 py-2.5 text-right">Hours</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {selectedBreakdownEmp.homeVisits.map((hv, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/60">
+                              <td className="px-4 py-2.5 font-mono font-medium text-slate-800">{hv.date}</td>
+                              <td className="px-3 py-2.5 text-slate-500">{hv.day}</td>
+                              <td className="px-4 py-2.5 font-semibold text-slate-800">{hv.place || 'Home Visit'}</td>
+                              <td className="px-4 py-2.5 text-slate-600">{hv.address || '—'}</td>
+                              <td className="px-4 py-2.5 text-slate-700">
+                                {hv.checkIn && hv.checkIn !== '--:--' ? `${hv.checkIn} - ${hv.checkOut || 'In Progress'}` : '—'}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-bold text-emerald-700">
+                                {hv.hours ? `${hv.hours} hrs` : (hv.durationFormatted || '—')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => {
+                  const realEmp = employees.find(e => e.employeeId === selectedBreakdownEmp.employeeId || e.id === selectedBreakdownEmp.employeeId || e._id === selectedBreakdownEmp._id);
+                  const targetDbId = realEmp?._id || selectedBreakdownEmp._id;
+                  navigate(`/employee-tracking/${targetDbId}/${selectedBreakdownEmp.employeeId}`);
+                }}
+                className="px-3 py-2 rounded-xl bg-[#588b12]/10 hover:bg-[#588b12]/20 text-[#588b12] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                Open Daily Tracking Timeline <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
               <button
                 onClick={() => setSelectedBreakdownEmp(null)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                className="px-4.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Close
               </button>

@@ -36,6 +36,7 @@ import Navbar from '../layouts/Navbar';
 import AxiosInstance from '../utilities/AxiosInstance';
 import EmployeeList from '../component/EmployeeList';
 import Attendance from '../component/Attendance';
+import ComprehensiveHomeVisitLogs from '../component/ComprehensiveHomeVisitLogs';
 import PayslipModal from '../component/PayslipModal';
 
 const calculateAge = (dobString) => {
@@ -180,8 +181,9 @@ export default function AdminDashboard() {
   const fetchTodayAttendance = async () => {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const res = await AxiosInstance.get(`/attendance/find-date/${todayStr}`);
-      setTodayAttendance(res.data || []);
+      const res = await AxiosInstance.get(`/new-attendance/finddate/${todayStr}`);
+      const rawList = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      setTodayAttendance(rawList);
     } catch (err) {
       console.error("Error fetching today's attendance:", err);
     }
@@ -1263,6 +1265,11 @@ export default function AdminDashboard() {
           {/* Active Tab: Attendance Logs */}
           {activeTab === 'Attendance Logs' && (
             <Attendance employees={employees} />
+          )}
+
+          {/* Active Tab: Home Visit Logs */}
+          {activeTab === 'Home Visit' && (
+            <ComprehensiveHomeVisitLogs employees={employees} />
           )}
 
           {/* Active Tab: Shortlisted Candidates */}

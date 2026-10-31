@@ -112,148 +112,249 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
-                <th className="px-6 py-4">Employee ID</th>
-                <th className="px-6 py-4">Profile</th>
-                <th className="px-6 py-4">Full Name</th>
-                <th className="px-6 py-4">Designation</th>
-                <th className="px-6 py-4">Department</th>
-                <th className="px-6 py-4">Date of Joining</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-150/80 text-sm">
-              {currentEmployees.length > 0 ? (
-                currentEmployees.map((emp) => (
-                  <tr key={emp.id} className="hover:bg-slate-50/40 transition-colors group">
-                    <td className="px-6 py-4 font-mono font-bold text-slate-500 group-hover:text-slate-900">
-                      {emp.id}
-                    </td>
-                    <td className="px-6 py-4">
-                      <img
-                        src={emp.avatar}
-                        alt={emp.name}
-                        className="w-9 h-9 rounded-full object-cover border border-slate-200 shadow-inner"
-                      />
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-slate-900">
-                      {emp.name}
-                    </td>
-                    <td className="px-6 py-4 text-slate-650 font-medium">
-                      <div className="font-semibold text-slate-900">{emp.designation}</div>
-                      {emp.employeeType === "Probation Period" ? (() => {
-                        const start = emp.probationStartDate || emp.rawDateOfJoining || new Date();
-                        const completed = getWorkingDaysCount(new Date(start), new Date());
-                        const remaining = Math.max(0, 45 - completed);
-                        return (
-                          <span className="inline-block mt-1 text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                            🟡 Probation – {completed} of 45 Days Completed ({remaining} Left)
-                          </span>
-                        );
-                      })() : emp.employeeType === "Notice Period" ? (() => {
-                        const start = emp.noticeStartDate || new Date();
-                        const completed = getWorkingDaysCount(new Date(start), new Date());
-                        const remaining = Math.max(0, 30 - completed);
-                        return (
-                          <span className="inline-block mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                            🔴 Notice Period Day {completed} / 30 ({remaining} Days Remaining)
-                          </span>
-                        );
-                      })() : emp.employeeType && (
-                        <span className="inline-block mt-1 text-[10px] font-extrabold text-[#588b12] bg-[#588b12]/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
-                          {emp.employeeType}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 font-medium">
-                      {emp.department}
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 font-medium">
-                      {emp.dateOfJoining}
-                    </td>
-                    <td className="px-6 py-4">
-                      {emp.status === 'Active' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold bg-lime-50 text-lime-700 border border-lime-200/60">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Active
-                        </span>
-                      )}
-                      {emp.status === 'Onboarding' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
-                          <Clock className="w-3.5 h-3.5" />
-                          Onboarding
-                        </span>
-                      )}
-                      {emp.status === 'Deactivated' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
-                          <AlertCircle className="w-3.5 h-3.5" />
-                          Deactivated
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2.5">
+          <div className="w-full overflow-x-auto rounded-xl border border-slate-200">
+            <table className="min-w-max w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 text-xs font-bold uppercase tracking-wider">
+                  {/* <th className="px-6 py-4 whitespace-nowrap">Employee ID</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Profile</th> */}
+                  <th className="px-6 py-4 whitespace-nowrap">Full Name</th>
+                  {/* <th className="px-6 py-4 whitespace-nowrap">Sunday</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Monday</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Tuesday</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Wednesday</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Thursday</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Friday</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Saturday</th> */}
+                  <th className="px-6 py-4 whitespace-nowrap">Designation</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Department</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Date of Joining</th>
+                  <th className="px-6 py-4 whitespace-nowrap">Status</th>
+                  <th className="px-6 py-4 whitespace-nowrap text-right">Actions</th>
+                </tr>
+              </thead>
 
-                        {(!emp.faceVector || emp.faceVector.length === 0) && (
-                          <button
-                            title="Face Recognition"
-                            onClick={() => navigate(`/face-capture/${emp._id}`)}
-                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-amber-300 text-amber-500 hover:bg-amber-50 transition-colors cursor-pointer"
-                          >
-                            <ScanFace className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                          </button>
+              <tbody className="divide-y divide-slate-200/80 text-sm">
+                {currentEmployees.length > 0 ? (
+                  currentEmployees.map((emp) => (
+                    <tr
+                      key={emp.id}
+                      className="hover:bg-slate-50/40 transition-colors group"
+                    >
+                      {/* Employee ID */}
+                      {/* <td className="px-6 py-4 font-mono font-bold text-slate-500 whitespace-nowrap group-hover:text-slate-900">
+                        {emp.id}
+                      </td> */}
+
+                      {/* Profile */}
+                      {/* <td className="px-6 py-4">
+                        <img
+                          src={emp.avatar}
+                          alt={emp.name}
+                          className="w-9 h-9 rounded-full object-cover border border-slate-200 shadow-inner"
+                        />
+                      </td> */}
+
+                      {/* Full Name */}
+                      <td className="px-6 py-4 font-semibold text-slate-900 whitespace-nowrap">
+                        {emp.name}
+                      </td>
+
+            
+                   
+                      {/* Designation */}
+                      <td className="px-6 py-4 text-slate-650 font-medium whitespace-nowrap">
+                        <div className="font-semibold text-slate-900">
+                          {emp.designation || "-"}
+                        </div>
+
+                        {emp.employeeType === "Probation Period" &&
+                          (() => {
+                            const start =
+                              emp.probationStartDate ||
+                              emp.rawDateOfJoining ||
+                              new Date();
+
+                            const completed = getWorkingDaysCount(
+                              new Date(start),
+                              new Date()
+                            );
+
+                            const remaining = Math.max(0, 45 - completed);
+
+                            return (
+                              <span className="inline-block mt-1 text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                🟡 Probation – {completed} of 45 Days Completed (
+                                {remaining} Left)
+                              </span>
+                            );
+                          })()}
+
+                        {emp.employeeType === "Notice Period" &&
+                          (() => {
+                            const start = emp.noticeStartDate || new Date();
+
+                            const completed = getWorkingDaysCount(
+                              new Date(start),
+                              new Date()
+                            );
+
+                            const remaining = Math.max(0, 30 - completed);
+
+                            return (
+                              <span className="inline-block mt-1 text-[10px] font-extrabold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                🔴 Notice Period Day {completed} / 30 ({remaining} Days
+                                Remaining)
+                              </span>
+                            );
+                          })()}
+
+                        {emp.employeeType &&
+                          emp.employeeType !== "Probation Period" &&
+                          emp.employeeType !== "Notice Period" && (
+                            <span className="inline-block mt-1 text-[10px] font-extrabold text-[#588b12] bg-[#588b12]/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                              {emp.employeeType}
+                            </span>
+                          )}
+                      </td>
+
+                      {/* Department */}
+                      <td className="px-6 py-4 text-slate-500 font-medium whitespace-nowrap">
+                        {emp.department || "-"}
+                      </td>
+
+                      {/* Date of Joining */}
+                      <td className="px-6 py-4 text-slate-500 font-medium whitespace-nowrap">
+                        {emp.dateOfJoining || "-"}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {emp.status === "Active" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold bg-lime-50 text-lime-700 border border-lime-200/60">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Active
+                          </span>
                         )}
-                        <button
-                          title="Daily Tracking"
-                          onClick={() => navigate(`/employee-tracking/${emp._id}/${emp.id}`)}
-                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-[#588b12]/40 text-[#588b12] hover:bg-[#588b12]/10 transition-colors cursor-pointer"
-                        >
-                          <Calendar className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                        </button>
-                        <button
-                          title="Employee Leave History"
-                          onClick={() => navigate(`/employee-leaves/${emp._id}/${emp.id}`)}
-                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-purple-300 text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer"
-                        >
-                          <CalendarDays className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                        </button>
-                        <button
-                          title="View"
-                          onClick={() => navigate(`/view-employee/${emp._id}`)}
-                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-blue-300 text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
-                        >
-                          <Eye className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                        </button>
-                        <button
-                          title="Edit"
-                          onClick={() => navigate(`/edit-employee/${emp._id}`)}
-                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-slate-300 text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer"
-                        >
-                          <Edit className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                        </button>
-                        <button
-                          title="Delete"
-                          onClick={() => setDeleteModal({ isOpen: true, employee: emp, confirmId: '' })}
-                          className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-rose-300 text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-[18px] h-[18px]" strokeWidth={2.5} />
-                        </button>
-                      </div>
+
+                        {emp.status === "Onboarding" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
+                            <Clock className="w-3.5 h-3.5" />
+                            Onboarding
+                          </span>
+                        )}
+
+                        {emp.status === "Deactivated" && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            Deactivated
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2.5">
+                          {/* Face Recognition */}
+                          {(!emp.faceVector || emp.faceVector.length === 0) && (
+                            <button
+                              title="Face Recognition"
+                              onClick={() => navigate(`/face-capture/${emp._id}`)}
+                              className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-amber-300 text-amber-500 hover:bg-amber-50 transition-colors cursor-pointer"
+                            >
+                              <ScanFace
+                                className="w-[18px] h-[18px]"
+                                strokeWidth={2.5}
+                              />
+                            </button>
+                          )}
+
+                          {/* Daily Tracking */}
+                          <button
+                            title="Daily Tracking"
+                            onClick={() =>
+                              navigate(`/employee-tracking/${emp._id}/${emp.id}`)
+                            }
+                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-[#588b12]/40 text-[#588b12] hover:bg-[#588b12]/10 transition-colors cursor-pointer"
+                          >
+                            <Calendar
+                              className="w-[18px] h-[18px]"
+                              strokeWidth={2.5}
+                            />
+                          </button>
+
+                          {/* Employee Leave History */}
+                          <button
+                            title="Employee Leave History"
+                            onClick={() =>
+                              navigate(`/employee-leaves/${emp._id}/${emp.id}`)
+                            }
+                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-purple-300 text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer"
+                          >
+                            <CalendarDays
+                              className="w-[18px] h-[18px]"
+                              strokeWidth={2.5}
+                            />
+                          </button>
+
+                          {/* View */}
+                          <button
+                            title="View"
+                            onClick={() => navigate(`/view-employee/${emp._id}`)}
+                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-blue-300 text-blue-500 hover:bg-blue-50 transition-colors cursor-pointer"
+                          >
+                            <Eye
+                              className="w-[18px] h-[18px]"
+                              strokeWidth={2.5}
+                            />
+                          </button>
+
+                          {/* Edit */}
+                          <button
+                            title="Edit"
+                            onClick={() => navigate(`/edit-employee/${emp._id}`)}
+                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-slate-300 text-slate-500 hover:bg-slate-50 transition-colors cursor-pointer"
+                          >
+                            <Edit
+                              className="w-[18px] h-[18px]"
+                              strokeWidth={2.5}
+                            />
+                          </button>
+
+                          {/* Delete */}
+                          <button
+                            title="Delete"
+                            onClick={() =>
+                              setDeleteModal({
+                                isOpen: true,
+                                employee: emp,
+                                confirmId: "",
+                              })
+                            }
+                            className="w-[34px] h-[34px] flex items-center justify-center rounded-[10px] border border-rose-300 text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+                          >
+                            <Trash2
+                              className="w-[18px] h-[18px]"
+                              strokeWidth={2.5}
+                            />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={15}
+                      className="px-6 py-12 text-center text-slate-500 font-medium"
+                    >
+                      No employees found.
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="8" className="px-6 py-12 text-center text-slate-450 font-medium">
-                    No employees found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="bg-slate-50/60 px-6 py-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
@@ -272,11 +373,10 @@ export default function EmployeeList({ employees, navigate, setDeleteModal }) {
               <button
                 key={pageNum}
                 onClick={() => setCurrentPage(pageNum)}
-                className={`px-3 py-1 rounded font-bold cursor-pointer transition-all ${
-                  activePage === pageNum
-                    ? 'bg-[#588b12] text-white'
-                    : 'border border-slate-200/60 bg-white text-slate-650 hover:bg-slate-100'
-                }`}
+                className={`px-3 py-1 rounded font-bold cursor-pointer transition-all ${activePage === pageNum
+                  ? 'bg-[#588b12] text-white'
+                  : 'border border-slate-200/60 bg-white text-slate-650 hover:bg-slate-100'
+                  }`}
               >
                 {pageNum}
               </button>
